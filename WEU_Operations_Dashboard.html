@@ -561,6 +561,7 @@ body.dark-mode .country-cards-empty{color:#5a7a9a;}
   </div>
 
   <!-- 2. KPIs -->
+  <div id="kpi-region-bar" style="display:none;font-size:11px;font-weight:700;color:#0056a3;padding:2px 4px 4px;letter-spacing:0.3px;"></div>
   <div class="kpi-grid">
     <div class="kpi-card"><div class="kpi-label">1 · Total Open Order</div><div class="kpi-value" id="ov-total-val">$0</div><div class="kpi-sub" id="ov-total-qty">0 QTY</div></div>
     <div class="kpi-card red"><div class="kpi-label">2 · Backorder</div><div class="kpi-value" id="ov-bo-val">$0</div><div class="kpi-sub" id="ov-bo-qty">0 QTY</div></div>
@@ -1745,13 +1746,20 @@ function _buildFcstDemandCharts(q, mpgF, exactCFNs){
   const cL2T=cL2.reduce((s,v)=>s+v,0), cL1T=cL1.reduce((s,v)=>s+v,0);
   const cL0T=cL0.reduce((s,v)=>s+v,0), cDT=cD.reduce((s,v)=>s+v,0);
 
+  // Pick active lag based on lag selector
+  const _activeLag = _countryTableLag || 'lag0';
+  const wFcstActive = _activeLag==='lag2' ? wL2 : _activeLag==='lag1' ? wL1 : wL0;
+  const cFcstActive = _activeLag==='lag2' ? cL2 : _activeLag==='lag1' ? cL1 : cL0;
+  const wFcstActiveT = _activeLag==='lag2' ? wL2T : _activeLag==='lag1' ? wL1T : wL0T;
+  const cFcstActiveT = _activeLag==='lag2' ? cL2T : _activeLag==='lag1' ? cL1T : cL0T;
+
   const fmtTick=v=>v>=1e6?(Math.round(v/1e5)/10)+'M':v>=1e3?(Math.round(v/100)/10)+'K':v;
 
-  // CONS% per month using Lag0 (null if no forecast)
-  const wCons=wL0.map((f,i)=>f>0?Math.round(wD[i]/f*100*10)/10:null);
-  const cCons=cL0.map((f,i)=>f>0?Math.round(cD[i]/f*100*10)/10:null);
-  const wConsT=wL0T>0?Math.round(wDT/wL0T*100*10)/10:null;
-  const cConsT=cL0T>0?Math.round(cDT/cL0T*100*10)/10:null;
+  // CONS% per month using the active lag
+  const wCons=wFcstActive.map((f,i)=>f>0?Math.round(wD[i]/f*100*10)/10:null);
+  const cCons=cFcstActive.map((f,i)=>f>0?Math.round(cD[i]/f*100*10)/10:null);
+  const wConsT=wFcstActiveT>0?Math.round(wDT/wFcstActiveT*100*10)/10:null;
+  const cConsT=cFcstActiveT>0?Math.round(cDT/cFcstActiveT*100*10)/10:null;
 
   // Shared CONS% axis max — same scale on both WEU and CEMA so values are comparable
   const _allCons=[...wCons,...cCons].filter(v=>v!==null&&v!==undefined);
@@ -1769,6 +1777,10 @@ function _buildFcstDemandCharts(q, mpgF, exactCFNs){
   const C_DEM=dark?{bg:'rgba(140,210,75,0.90)', bd:'#8cd24b'}  // bright green
                    :{bg:'rgba(118,176,65,0.85)', bd:'#76b041'}; // green — Demand
   const C_PCT=dark?'#fbbf24':'#f59e0b';                         // amber — CONS% line
+
+  // Active lag label and color (depends on color palette above)
+  const _lagLabel = _activeLag==='lag2' ? 'Fcst Lag 2' : _activeLag==='lag1' ? 'Fcst Lag 1' : 'Fcst Lag 0';
+  const _lagColor = _activeLag==='lag2' ? C_L2 : _activeLag==='lag1' ? C_L1 : C_L0;
 
   // Axis / grid / legend colors
   const tickClr =dark?'#a0bcd8':'#666';
@@ -1904,6 +1916,7 @@ function selectCountryRow(key){
   const mpgF= (document.getElementById('global-mpg')||{value:''}).value;
   buildCountryCards(qv, mpgF, (typeof cfnSelectedSet!=='undefined'&&cfnSelectedSet.length>0)?cfnSelectedSet:[]);
   buildFcstDemandCharts();
+  _applyKPIRegion(_selectedRegionKey);
 }
 // Country table lag selection (lag0 / lag1 / lag2)
 let _countryTableLag = 'lag0';
@@ -1916,6 +1929,7 @@ function setCountryLag(lag){
   const q=(document.getElementById('global-cfn')||{value:''}).value.trim().toLowerCase();
   const mpgF=(document.getElementById('global-mpg')||{value:''}).value;
   buildCountryCards(q, mpgF, (typeof cfnSelectedSet!=='undefined'&&cfnSelectedSet.length>0)?cfnSelectedSet:[]);
+  buildFcstDemandCharts();
 }
 
 // ── Section-title filter badge ────────────────────────────────────────────────
@@ -2297,6 +2311,27 @@ function buildTopBO(){
     <td class="num">${fmtImpact(r.BO_Impact_2wk)}</td>
   </tr>`).join('');
 }
+function _applyKPIRegion(key){
+  const fmtMoney=v=>v>=1e6?'$'+fmt(v/1e6,2)+'M':'$'+fmt(v,0);
+  const bar=document.getElementById('kpi-region-bar');
+  // 'WEU' maps to OO_TOTALS (the main WEU BO file IS the WEU total)
+  const cats = (key && key!=='WEU') ? COUNTRY_OO_MAP[key] : null;
+  const src  = cats || OO_TOTALS;
+  OV_DEFS.forEach(d=>{
+    const t = cats ? (cats[d.key]||{qty:0,val:0}) : (OO_TOTALS[d.key]||{qty:0,val:0});
+    const ve=document.getElementById(d.valId); if(ve) ve.textContent=fmtMoney(t.val);
+    const qe=document.getElementById(d.qtyId); if(qe) qe.textContent=fmt(t.qty)+' QTY';
+  });
+  if(bar){
+    if(key){
+      const lbl = (cats||key==='WEU') ? '📍 '+key : '📍 '+key+' (load BO file for this region to see data)';
+      bar.textContent=lbl; bar.style.display='block';
+    } else {
+      bar.style.display='none';
+    }
+  }
+}
+
 function updateKPIs(){
   // Update 8 overview cards from OO_TOTALS (populated by processBO)
   const fmtMoney=v=>v>=1e6?'$'+fmt(v/1e6,2)+'M':'$'+fmt(v,0);
@@ -2323,6 +2358,8 @@ function updateKPIs(){
   // Refresh In-Transit + Country cards with no filter (full data)
   buildInTransitWoCChart('','');
   buildCountryCards('','');
+  // If a region is selected, re-apply its KPI filter on top of the refreshed totals
+  if(typeof _applyKPIRegion==='function' && typeof _selectedRegionKey!=='undefined') _applyKPIRegion(_selectedRegionKey);
 }
 
 // ===================== GLOBAL SEARCH =====================
@@ -3076,9 +3113,12 @@ function buildMPGSummary(rorData){
 // ── Overview (8-category) data stores — populated by processBO ──────────────
 // OO_CAT_MAP[CFN] = { total, bo, pastdue, future, shipped, dc, current, unknown }
 //   each bucket = { qty: number, val: number }
-const OO_CAT_MAP = {};
-const OO_CATS    = ['total','bo','pastdue','future','shipped','dc','current'];
-let   OO_TOTALS  = {};  OO_CATS.forEach(k=>{ OO_TOTALS[k]={qty:0,val:0}; });
+const OO_CAT_MAP    = {};
+const OO_CATS       = ['total','bo','pastdue','future','shipped','dc','current'];
+let   OO_TOTALS     = {};  OO_CATS.forEach(k=>{ OO_TOTALS[k]={qty:0,val:0}; });
+// COUNTRY_OO_MAP[regionKey] = {total,bo,pastdue,future,shipped,dc,current} each {qty,val}
+// Populated from per-region BO files (all order categories, not just BO)
+const COUNTRY_OO_MAP = {};
 
 // Column definitions for the 8 overview cards
 const OV_DEFS = [
@@ -3574,38 +3614,53 @@ function _readBODetails(file){
         const wb=XLSX.read(new Uint8Array(e.target.result),{type:'array'});
         const ws=wb.Sheets[wb.SheetNames[0]];
         const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:null});
-        if(!rows||rows.length<2){resolve({totalVal:0,totalQty:0,cfnQty:{},cfnVal:{}});return;}
+        const _empty={totalVal:0,totalQty:0,cfnQty:{},cfnVal:{},cats:null};
+        if(!rows||rows.length<2){resolve(_empty);return;}
         const hdr=rows[0].map(h=>String(h||'').toLowerCase());
         const idxGrand=hdr.findIndex(h=>h.includes('isgrandtotal'));
         const idxCat  =hdr.findIndex(h=>h.includes('parent_category')||h.includes('category')||h.includes('flow'));
         const idxVal  =hdr.findIndex(h=>h.includes('total_open_order__')||h.includes('total_value')||h.includes('open_order__'));
         const idxQty  =hdr.findIndex(h=>h.includes('total_open_order_qty')||h.includes('total_qty')||h.includes('open_order_qty'));
         const idxCFN  =hdr.findIndex(h=>h.includes('cfn'));
-        if(idxCat<0||idxVal<0){resolve({totalVal:0,totalQty:0,cfnQty:{},cfnVal:{}});return;}
-        let totalVal=0, totalQty=0;
+        if(idxCat<0||idxVal<0){resolve(_empty);return;}
+        function _ck(cat){
+          if(cat.includes('backorder'))                    return 'bo';
+          if(cat.includes('past'))                         return 'pastdue';
+          if(cat.includes('future'))                       return 'future';
+          if(cat.includes('ship'))                         return 'shipped';
+          if(cat.includes('dc')||cat.includes('workload')) return 'dc';
+          if(cat.includes('current'))                      return 'current';
+          return null;
+        }
+        let totalVal=0, totalQty=0; // BO-only totals (backward compat for COUNTRY_BO_MAP)
         const cfnQty={}, cfnVal={};
+        const blank=()=>({qty:0,val:0});
+        const cats={total:blank(),bo:blank(),pastdue:blank(),future:blank(),shipped:blank(),dc:blank(),current:blank()};
         for(let i=1;i<rows.length;i++){
           const row=rows[i];
           if(!row||!row.length)continue;
           const grand=row[idxGrand];
           if(grand===true||String(grand).toLowerCase()==='true')continue;
           const cat=String(row[idxCat]||'').toLowerCase();
-          if(!cat.includes('backorder'))continue;
           const v=parseFloat(row[idxVal])||0;
           const q=idxQty>=0?(parseFloat(row[idxQty])||0):0;
-          totalVal+=v; totalQty+=q;
-          if(idxCFN>=0){
-            const cfn=String(row[idxCFN]||'').trim().toUpperCase();
-            if(cfn&&cfn!=='NULL'){
-              cfnVal[cfn]=(cfnVal[cfn]||0)+v;
-              cfnQty[cfn]=(cfnQty[cfn]||0)+q;
+          // All-categories KPI aggregation
+          const ck=_ck(cat);
+          if(ck) cats[ck].qty+=q, cats[ck].val+=v;
+          cats.total.qty+=q; cats.total.val+=v;
+          // BO-only for backward compat (cfnQty/cfnVal used by country cards)
+          if(cat.includes('backorder')){
+            totalVal+=v; totalQty+=q;
+            if(idxCFN>=0){
+              const cfn=String(row[idxCFN]||'').trim().toUpperCase();
+              if(cfn&&cfn!=='NULL'){ cfnVal[cfn]=(cfnVal[cfn]||0)+v; cfnQty[cfn]=(cfnQty[cfn]||0)+q; }
             }
           }
         }
-        resolve({totalVal, totalQty, cfnQty, cfnVal});
-      }catch(err){resolve({totalVal:0,totalQty:0,cfnQty:{},cfnVal:{}});}
+        resolve({totalVal, totalQty, cfnQty, cfnVal, cats});
+      }catch(err){resolve({totalVal:0,totalQty:0,cfnQty:{},cfnVal:{},cats:null});}
     };
-    reader.onerror=()=>resolve({totalVal:0,totalQty:0,cfnQty:{},cfnVal:{}});
+    reader.onerror=()=>resolve({totalVal:0,totalQty:0,cfnQty:{},cfnVal:{},cats:null});
     reader.readAsArrayBuffer(file);
   });
 }
@@ -3870,25 +3925,42 @@ function processCEMABO(file){
         console.warn('CEMA BO: Required columns not found (CFN / Qty / Category).');return;
       }
 
-      // Build CFN → BO_QTY map from backorder rows only
+      // Build CFN → BO_QTY map and full KPI category totals
       const map={}; const valMap={};
       let totalQty=0, totalVal=0;
+      function _cemaCk(cat){
+        if(cat.includes('backorder'))                    return 'bo';
+        if(cat.includes('past'))                         return 'pastdue';
+        if(cat.includes('future'))                       return 'future';
+        if(cat.includes('ship'))                         return 'shipped';
+        if(cat.includes('dc')||cat.includes('workload')) return 'dc';
+        if(cat.includes('current'))                      return 'current';
+        return null;
+      }
+      const _b=()=>({qty:0,val:0});
+      const cemaCats={total:_b(),bo:_b(),pastdue:_b(),future:_b(),shipped:_b(),dc:_b(),current:_b()};
       for(let i=1;i<rows.length;i++){
         const row=rows[i];
         if(!row||!row.length) continue;
         const grand=row[idxGrand];
         if(grand===true||String(grand).toLowerCase()==='true') continue;
         const cat=String(row[idxCat]||'').toLowerCase();
-        if(!cat.includes('backorder')) continue;
         const cfn=String(row[idxCFN]||'').trim().toUpperCase();
-        if(!cfn) continue;
         const qty=parseInt(row[idxQty])||0;
         const val=idxVal>=0?(parseFloat(row[idxVal])||0):0;
+        // All-categories KPI totals
+        const ck=_cemaCk(cat);
+        if(ck){ cemaCats[ck].qty+=qty; cemaCats[ck].val+=val; }
+        cemaCats.total.qty+=qty; cemaCats.total.val+=val;
+        // BO-only for CEMA_BO_QTY_MAP / CEMA_BO_VAL_MAP (backward compat)
+        if(!cat.includes('backorder')) continue;
+        if(!cfn) continue;
         map[cfn]=(map[cfn]||0)+qty;
         valMap[cfn]=(valMap[cfn]||0)+val;
         totalQty+=qty;
         totalVal+=val;
       }
+      COUNTRY_OO_MAP['CEMA'] = cemaCats;
 
       // Replace contents of global map
       Object.keys(CEMA_BO_QTY_MAP).forEach(k=>delete CEMA_BO_QTY_MAP[k]);
@@ -4134,6 +4206,7 @@ async function loadFromFolder(){
           // Populate in-memory COUNTRY_BO_MAP for per-CFN country cards
           const _cKey = file.name.replace(/\.xlsx$/i,'').replace(/E2E_BO_/i,'').replace(/_/g,' ').trim().toUpperCase();
           COUNTRY_BO_MAP[_cKey] = { totalQty: boQty, totalVal: boVal, cfnQty: boDetails.cfnQty, cfnVal: boDetails.cfnVal };
+          if(boDetails.cats) COUNTRY_OO_MAP[_cKey] = boDetails.cats;
           if(!existingNames.has(file.name)){
             existing.push({ name: file.name, at: ts, val: boVal, qty: boQty });
             existingNames.add(file.name);
@@ -4383,6 +4456,7 @@ async function refreshAllFiles(){
               const det  = await _readBODetails(file);
               const cKey = file.name.replace(/\.xlsx$/i,'').replace(/E2E_BO_/i,'').replace(/_/g,' ').trim().toUpperCase();
               COUNTRY_BO_MAP[cKey] = { totalQty:det.totalQty, totalVal:det.totalVal, cfnQty:det.cfnQty, cfnVal:det.cfnVal };
+              if(det.cats) COUNTRY_OO_MAP[cKey] = det.cats;
               if(!existingNames.has(file.name)){
                 existing.push({ name:file.name, at:ts, val:det.totalVal, qty:det.totalQty });
                 existingNames.add(file.name);
@@ -4979,6 +5053,7 @@ function checkInvBannerLoaded(){
           const det  = await _readBODetails(file);
           const cKey = file.name.replace(/\.xlsx$/i,'').replace(/E2E_BO_/i,'').replace(/_/g,' ').trim().toUpperCase();
           COUNTRY_BO_MAP[cKey] = { totalQty:det.totalQty, totalVal:det.totalVal, cfnQty:det.cfnQty, cfnVal:det.cfnVal };
+          if(det.cats) COUNTRY_OO_MAP[cKey] = det.cats;
           if(!existingNames.has(file.name)){
             existing.push({ name:file.name, at:ts, val:det.totalVal, qty:det.totalQty });
             existingNames.add(file.name);
