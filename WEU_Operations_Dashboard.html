@@ -623,6 +623,10 @@ body.dark-mode .country-cards-empty{color:#5a7a9a;}
           <button id="clag-btn-lag1" class="lag-btn" onclick="setCountryLag('lag1')">Lag 1</button>
           <button id="clag-btn-lag2" class="lag-btn" onclick="setCountryLag('lag2')">Lag 2</button>
         </div>
+        <div class="lag-selector" id="cquarter-toggle">
+          <button id="cquarter-btn-q4" class="lag-btn active" onclick="setCountryQuarter('q4')">Q4</button>
+          <button id="cquarter-btn-q3" class="lag-btn" onclick="setCountryQuarter('q3')">Q3</button>
+        </div>
         <div id="creg-toggle" style="display:flex;gap:0;border:1.5px solid #d0dff0;border-radius:8px;overflow:hidden;font-size:11px;font-weight:700;">
           <button id="creg-btn-global" onclick="setCountryView('global')"
             style="padding:3px 12px;border:none;cursor:pointer;background:#f0f4f8;color:#5a7a9a;letter-spacing:.3px;">GLOBAL</button>
@@ -1299,11 +1303,16 @@ function _buildCountryGlobalView(grid, selUpper, q, mpgF, hasFilter, lag){
     cemaBoVal = parseFloat(localStorage.getItem('cema_bo_total_val')||'0');
   }
 
+  // Quarter config for dynamic month selection
+  const qCfgG = QUARTER_CFG[_countryTableQuarter||'q4'];
+  const [gm0,gm1,gm2] = qCfgG.months;
+  const [gc0,gc1,gc2] = qCfgG.cemaMths;
+
   // Per-month FCST (selected lag) + Demand for WEU and CEMA
-  const wFcst={feb:sumFcst(lagData,'feb'),       mar:sumFcst(lagData,'mar'),       apr:sumFcst(lagData,'apr')};
-  const wDem ={feb:sumFcst(DEMAND_DATA,'feb'),   mar:sumFcst(DEMAND_DATA,'mar'),   apr:sumFcst(DEMAND_DATA,'apr')};
-  const cFcst={feb:sumFcst(lagData,'cema_feb'),  mar:sumFcst(lagData,'cema_mar'),  apr:sumFcst(lagData,'cema_apr')};
-  const cDem ={feb:sumFcst(DEMAND_DATA,'cema_feb'),mar:sumFcst(DEMAND_DATA,'cema_mar'),apr:sumFcst(DEMAND_DATA,'cema_apr')};
+  const wFcst={[gm0]:sumFcst(lagData,gm0),   [gm1]:sumFcst(lagData,gm1),   [gm2]:sumFcst(lagData,gm2)};
+  const wDem ={[gm0]:sumFcst(DEMAND_DATA,gm0),[gm1]:sumFcst(DEMAND_DATA,gm1),[gm2]:sumFcst(DEMAND_DATA,gm2)};
+  const cFcst={[gm0]:sumFcst(lagData,gc0),   [gm1]:sumFcst(lagData,gc1),   [gm2]:sumFcst(lagData,gc2)};
+  const cDem ={[gm0]:sumFcst(DEMAND_DATA,gc0),[gm1]:sumFcst(DEMAND_DATA,gc1),[gm2]:sumFcst(DEMAND_DATA,gc2)};
 
   // Lag key mapping for COUNTRY_FCST_MAP per-month buckets
   const fKey  = lag==='lag2' ? 'cfnFcst2'  : lag==='lag1' ? 'cfnFcst1'  : 'cfnFcst';
@@ -1325,11 +1334,11 @@ function _buildCountryGlobalView(grid, selUpper, q, mpgF, hasFilter, lag){
     const fcm=(typeof COUNTRY_FCST_MAP!=='undefined')?COUNTRY_FCST_MAP[cKey]:null;
     if(!fcm) return null;
 
-    const mF={feb:0,mar:0,apr:0}, mD={feb:0,mar:0,apr:0};
+    const mF={[gm0]:0,[gm1]:0,[gm2]:0}, mD={[gm0]:0,[gm1]:0,[gm2]:0};
     let usedMonthBucket=false;
 
     // Path 1: per-month buckets (populated when targetMonth was detected from filename)
-    ['feb','mar','apr'].forEach(m=>{
+    qCfgG.months.forEach(m=>{
       const me=fcm[m];
       if(!me) return;
       usedMonthBucket=true;
@@ -1343,24 +1352,21 @@ function _buildCountryGlobalView(grid, selUpper, q, mpgF, hasFilter, lag){
     });
 
     // Path 2: flat totals fallback — used when per-month buckets were not created
-    // (e.g. if _fcstTargetMonthFromFileName couldn't detect the month from the filename).
-    // We show the accumulated Q4 total in the "Q4 Total" column only (monthly breakdown = "—").
+    // We show the accumulated total in the last month column only (monthly breakdown = "—").
     if(!usedMonthBucket){
       if(hasFilter){
-        Object.entries(fcm[fKeyFlat]||fcm.cfnFcst||{}).forEach(([c,v])=>{ if(cfnMatchG(c)) mF.apr+=parseFloat(v)||0; });
-        Object.entries(fcm.cfnDemand||{}).forEach(([c,v])=>{ if(cfnMatchG(c)) mD.apr+=parseFloat(v)||0; });
+        Object.entries(fcm[fKeyFlat]||fcm.cfnFcst||{}).forEach(([c,v])=>{ if(cfnMatchG(c)) mF[gm2]+=parseFloat(v)||0; });
+        Object.entries(fcm.cfnDemand||{}).forEach(([c,v])=>{ if(cfnMatchG(c)) mD[gm2]+=parseFloat(v)||0; });
       } else {
-        mF.apr = fcm[tfKeyFlat]||fcm.totalFcst||0;
-        mD.apr = fcm.totalDemand||0;
+        mF[gm2] = fcm[tfKeyFlat]||fcm.totalFcst||0;
+        mD[gm2] = fcm.totalDemand||0;
       }
     }
 
-    const total=mF.feb+mF.mar+mF.apr+mD.feb+mD.mar+mD.apr;
+    const total=mF[gm0]+mF[gm1]+mF[gm2]+mD[gm0]+mD[gm1]+mD[gm2];
     if(total===0) return null;
-    // Return value copies (not references) so subsequent getRegionFcst calls
-    // cannot mutate these objects through the shared forEach closure variable.
-    return { mFcst:{feb:mF.feb,mar:mF.mar,apr:mF.apr},
-             mDem: {feb:mD.feb,mar:mD.mar,apr:mD.apr},
+    return { mFcst:{[gm0]:mF[gm0],[gm1]:mF[gm1],[gm2]:mF[gm2]},
+             mDem: {[gm0]:mD[gm0],[gm1]:mD[gm1],[gm2]:mD[gm2]},
              hasMonthBucket:usedMonthBucket };
   }
 
@@ -1384,34 +1390,35 @@ function _buildCountryGlobalView(grid, selUpper, q, mpgF, hasFilter, lag){
       // Read FCST from FCST_DATA composite keys — identical to how WEU/CEMA are read
       const rk = cKey.toLowerCase().replace(/\s+/g,'_'); // e.g. 'usa', 'latin_america'
       const mFcst = {
-        feb: sumFcst(lagData,        rk+'_feb'),
-        mar: sumFcst(lagData,        rk+'_mar'),
-        apr: sumFcst(lagData,        rk+'_apr')
+        [gm0]: sumFcst(lagData,     rk+'_'+gm0),
+        [gm1]: sumFcst(lagData,     rk+'_'+gm1),
+        [gm2]: sumFcst(lagData,     rk+'_'+gm2)
       };
       const mDem = {
-        feb: sumFcst(DEMAND_DATA,    rk+'_feb'),
-        mar: sumFcst(DEMAND_DATA,    rk+'_mar'),
-        apr: sumFcst(DEMAND_DATA,    rk+'_apr')
+        [gm0]: sumFcst(DEMAND_DATA, rk+'_'+gm0),
+        [gm1]: sumFcst(DEMAND_DATA, rk+'_'+gm1),
+        [gm2]: sumFcst(DEMAND_DATA, rk+'_'+gm2)
       };
-      const q4Fcst = mFcst.feb+mFcst.mar+mFcst.apr;
-      const q4Dem  = mDem.feb +mDem.mar +mDem.apr;
+      const q4Fcst = mFcst[gm0]+mFcst[gm1]+mFcst[gm2];
+      const q4Dem  = mDem[gm0] +mDem[gm1] +mDem[gm2];
       const hasFcst = q4Fcst>0 || q4Dem>0;
       return { cKey, flag:_cflag(cKey), boQty, boVal, hasFcst, hasMonthBucket:true, mFcst, mDem };
     })
-    .filter(r=>!hasFilter||r.boQty>0||r.boVal>0||r.mFcst.feb+r.mFcst.mar+r.mFcst.apr>0)
+    .filter(r=>!hasFilter||r.boQty>0||r.boVal>0||r.mFcst[gm0]+r.mFcst[gm1]+r.mFcst[gm2]>0)
     .sort((a,b)=>b.boVal-a.boVal);
 
   // Assemble ordered rows
   const rows = [];
-  if(weuBoQty>0||weuBoVal>0||wFcst.feb+wFcst.mar+wFcst.apr>0)
+  if(weuBoQty>0||weuBoVal>0||wFcst[gm0]+wFcst[gm1]+wFcst[gm2]>0)
     rows.push({ cKey:'WEU', flag:'🌍', boQty:weuBoQty, boVal:weuBoVal, mFcst:wFcst, mDem:wDem, hasFcst:true, hasMonthBucket:true });
-  if(cemaBoQty>0||cemaBoVal>0||cFcst.feb+cFcst.mar+cFcst.apr>0)
+  if(cemaBoQty>0||cemaBoVal>0||cFcst[gm0]+cFcst[gm1]+cFcst[gm2]>0)
     rows.push({ cKey:'CEMA', flag:'🌿', boQty:cemaBoQty, boVal:cemaBoVal, mFcst:cFcst, mDem:cDem, hasFcst:true, hasMonthBucket:true });
   otherRows.forEach(r=>rows.push(r));
 
   if(rows.length===0){ grid.innerHTML='<span class="country-cards-empty">Load BO files to see global data.</span>'; return; }
 
   const boQtyTotal=rows.reduce((s,r)=>s+r.boQty,0);
+  const [glbl0,glbl1,glbl2] = qCfgG.labels;
   const ths='padding:5px 6px;white-space:nowrap;font-size:10px;';
   const thsN=ths+'text-align:right;';
   const groupHdr='text-align:center;background:#004080;border-bottom:1px solid rgba(255,255,255,.25);';
@@ -1421,10 +1428,10 @@ function _buildCountryGlobalView(grid, selUpper, q, mpgF, hasFilter, lag){
       <th rowspan="2" style="${ths}">Region</th>
       <th rowspan="2" style="${thsN}">BO Val ($)</th>
       <th rowspan="2" style="${thsN}">BO Qty</th>
-      <th colspan="2" style="${ths+groupHdr}">Feb</th>
-      <th colspan="2" style="${ths+groupHdr}">Mar</th>
-      <th colspan="2" style="${ths+groupHdr}">Apr</th>
-      <th colspan="2" style="${ths+groupHdr}">Q4 Total</th>
+      <th colspan="2" style="${ths+groupHdr}">${glbl0}</th>
+      <th colspan="2" style="${ths+groupHdr}">${glbl1}</th>
+      <th colspan="2" style="${ths+groupHdr}">${glbl2}</th>
+      <th colspan="2" style="${ths+groupHdr}">${qCfgG.label} Total</th>
       <th rowspan="2" style="${thsN}">BO %</th>
       <th rowspan="2" style="${thsN}">Cons. %</th>
     </tr>
@@ -1439,9 +1446,9 @@ function _buildCountryGlobalView(grid, selUpper, q, mpgF, hasFilter, lag){
   const td='padding:4px 6px;border-bottom:1px solid #eaeef5;white-space:nowrap;';
   const tdn=td+'text-align:right;font-variant-numeric:tabular-nums;';
   rows.forEach((r,i)=>{
-    const q4Fcst=r.mFcst.feb+r.mFcst.mar+r.mFcst.apr;
-    if(r.cKey==='USA') try{console.log('[render-loop USA]',{i,hasFcst:r.hasFcst,hasMonthBucket:r.hasMonthBucket,mFcstFeb:r.mFcst?.feb,mFcstApr:r.mFcst?.apr,q4Fcst});}catch(_e){}
-    const q4Dem=r.mDem.feb+r.mDem.mar+r.mDem.apr;
+    const q4Fcst=r.mFcst[gm0]+r.mFcst[gm1]+r.mFcst[gm2];
+    if(r.cKey==='USA') try{console.log('[render-loop USA]',{i,hasFcst:r.hasFcst,hasMonthBucket:r.hasMonthBucket,mFcst0:r.mFcst?.[gm0],mFcst2:r.mFcst?.[gm2],q4Fcst});}catch(_e){}
+    const q4Dem=r.mDem[gm0]+r.mDem[gm1]+r.mDem[gm2];
     const boPct=boQtyTotal>0?r.boQty/boQtyTotal*100:0;
     const consPct=q4Fcst>0?q4Dem/q4Fcst*100:null;
     const bg=i%2===0?'':'background:#f7fafe;';
@@ -1451,9 +1458,9 @@ function _buildCountryGlobalView(grid, selUpper, q, mpgF, hasFilter, lag){
       <td style="${td}font-weight:600">${r.flag} ${esc(r.cKey)}</td>
       <td style="${tdn}">${fmtV(r.boVal)}</td>
       <td style="${tdn}">${fmtQ(r.boQty)}</td>
-      <td style="${tdn}">${r.hasFcst&&r.hasMonthBucket?fmtQ(r.mFcst.feb):'—'}</td><td style="${tdn}">${r.hasFcst&&r.hasMonthBucket?fmtQ(r.mDem.feb):'—'}</td>
-      <td style="${tdn}">${r.hasFcst&&r.hasMonthBucket?fmtQ(r.mFcst.mar):'—'}</td><td style="${tdn}">${r.hasFcst&&r.hasMonthBucket?fmtQ(r.mDem.mar):'—'}</td>
-      <td style="${tdn}">${r.hasFcst&&r.hasMonthBucket?fmtQ(r.mFcst.apr):'—'}</td><td style="${tdn}">${r.hasFcst&&r.hasMonthBucket?fmtQ(r.mDem.apr):'—'}</td>
+      <td style="${tdn}">${r.hasFcst&&r.hasMonthBucket?fmtQ(r.mFcst[gm0]):'—'}</td><td style="${tdn}">${r.hasFcst&&r.hasMonthBucket?fmtQ(r.mDem[gm0]):'—'}</td>
+      <td style="${tdn}">${r.hasFcst&&r.hasMonthBucket?fmtQ(r.mFcst[gm1]):'—'}</td><td style="${tdn}">${r.hasFcst&&r.hasMonthBucket?fmtQ(r.mDem[gm1]):'—'}</td>
+      <td style="${tdn}">${r.hasFcst&&r.hasMonthBucket?fmtQ(r.mFcst[gm2]):'—'}</td><td style="${tdn}">${r.hasFcst&&r.hasMonthBucket?fmtQ(r.mDem[gm2]):'—'}</td>
       <td style="${tdn}font-weight:600;color:#0056a3">${r.hasFcst?fmtQ(q4Fcst):'—'}</td>
       <td style="${tdn}font-weight:600;color:#1a5c35">${r.hasFcst?fmtQ(q4Dem):'—'}</td>
       <td style="${tdn+boPctSty}">${fmtPct(boPct)}</td>
@@ -1461,11 +1468,11 @@ function _buildCountryGlobalView(grid, selUpper, q, mpgF, hasFilter, lag){
     </tr>`;
   });
 
-  // WEU Total row
+  // Global Total row
   const totBoQty=rows.reduce((s,r)=>s+r.boQty,0);
   const totBoVal=rows.reduce((s,r)=>s+r.boVal,0);
-  const totQ4Fcst=rows.filter(r=>r.hasFcst).reduce((s,r)=>s+r.mFcst.feb+r.mFcst.mar+r.mFcst.apr,0);
-  const totQ4Dem=rows.filter(r=>r.hasFcst).reduce((s,r)=>s+r.mDem.feb+r.mDem.mar+r.mDem.apr,0);
+  const totQ4Fcst=rows.filter(r=>r.hasFcst).reduce((s,r)=>s+r.mFcst[gm0]+r.mFcst[gm1]+r.mFcst[gm2],0);
+  const totQ4Dem=rows.filter(r=>r.hasFcst).reduce((s,r)=>s+r.mDem[gm0]+r.mDem[gm1]+r.mDem[gm2],0);
   const totConsPct=totQ4Fcst>0?totQ4Dem/totQ4Fcst*100:null;
   const totConsSty=totConsPct!==null?(totConsPct>=100?'color:#28a745':totConsPct>=80?'color:#f0a500':'color:#d9534f'):'';
   const trs='padding:5px 6px;white-space:nowrap;border-top:2px solid #003366;font-weight:700;font-size:11px;background:#e8f0fc;';
@@ -1497,7 +1504,9 @@ function buildCountryCards(q, mpgF, exactCFNs){
 
   const selUpper = (exactCFNs||[]).map(c=>c.trim().toUpperCase());
   const hasFilter = selUpper.length>0 || !!q || !!mpgF;
-  const Q4 = ['feb','mar','apr'];
+  const qCfg = QUARTER_CFG[_countryTableQuarter||'q4'];
+  const qMonths = qCfg.months;
+  const [m0,m1,m2] = qMonths;
   const lag = (typeof _countryTableLag!=='undefined') ? _countryTableLag : 'lag0';
 
   // ── GLOBAL VIEW ────────────────────────────────────────────────────────────
@@ -1530,9 +1539,9 @@ function buildCountryCards(q, mpgF, exactCFNs){
       }
       const fcm=(typeof COUNTRY_FCST_MAP!=='undefined')?COUNTRY_FCST_MAP[cKey]:null;
       // Per-month fcst (selected lag) and demand
-      const mFcst={feb:0,mar:0,apr:0}, mDem={feb:0,mar:0,apr:0};
+      const mFcst={[m0]:0,[m1]:0,[m2]:0}, mDem={[m0]:0,[m1]:0,[m2]:0};
       if(fcm){
-        Q4.forEach(m=>{
+        qMonths.forEach(m=>{
           const me=fcm[m]; if(!me) return;
           if(hasFilter){
             Object.entries(me[fKey]||{}).forEach(([c,v])=>{ if(cfnMatch(c)) mFcst[m]+=parseFloat(v)||0; });
@@ -1543,11 +1552,11 @@ function buildCountryCards(q, mpgF, exactCFNs){
           }
         });
       }
-      const q4Fcst=mFcst.feb+mFcst.mar+mFcst.apr;
-      const q4Dem=mDem.feb+mDem.mar+mDem.apr;
-      return {cKey,flag,boQty,boVal,mFcst,mDem,q4Fcst,q4Dem};
+      const qTotalFcst=mFcst[m0]+mFcst[m1]+mFcst[m2];
+      const qTotalDem=mDem[m0]+mDem[m1]+mDem[m2];
+      return {cKey,flag,boQty,boVal,mFcst,mDem,qTotalFcst,qTotalDem};
     })
-    .filter(r=>!hasFilter||r.boQty>0||r.boVal>0||r.q4Fcst>0)
+    .filter(r=>!hasFilter||r.boQty>0||r.boVal>0||r.qTotalFcst>0)
     .sort((a,b)=>b.boVal-a.boVal);
 
   if(rows.length===0){ grid.innerHTML='<span class="country-cards-empty">No data for this selection.</span>'; return; }
@@ -1557,11 +1566,8 @@ function buildCountryCards(q, mpgF, exactCFNs){
   const fmtQ=v=>v>0?Math.round(v).toLocaleString():'—';
   const fmtPct=v=>v!==null&&v>0?v.toFixed(1)+'%':'—';
   const lagLbl=lag==='lag2'?'Lag 2':lag==='lag1'?'Lag 1':'Lag 0';
+  const [lbl0,lbl1,lbl2] = qCfg.labels;
 
-  // Compact two-row grouped header
-  // Month groups: Feb | Mar | Apr — each has (FcstLag | Demand) sub-cols
-  // Plus Q4 Total group (Fcst | Demand), then BO% and Cons%
-  // Total: Country + BO Val + BO Qty + 6 monthly + 2 Q4 + 2 % = 13 cols
   const ths='padding:5px 6px;white-space:nowrap;font-size:10px;';
   const thsN=ths+'text-align:right;';
   const groupHdr='text-align:center;background:#004080;border-bottom:1px solid rgba(255,255,255,.25);';
@@ -1571,10 +1577,10 @@ function buildCountryCards(q, mpgF, exactCFNs){
       <th rowspan="2" style="${ths}">Country</th>
       <th rowspan="2" style="${thsN}">BO Val ($)</th>
       <th rowspan="2" style="${thsN}">BO Qty</th>
-      <th colspan="2" style="${ths+groupHdr}">Feb</th>
-      <th colspan="2" style="${ths+groupHdr}">Mar</th>
-      <th colspan="2" style="${ths+groupHdr}">Apr</th>
-      <th colspan="2" style="${ths+groupHdr}">Q4 Total</th>
+      <th colspan="2" style="${ths+groupHdr}">${lbl0}</th>
+      <th colspan="2" style="${ths+groupHdr}">${lbl1}</th>
+      <th colspan="2" style="${ths+groupHdr}">${lbl2}</th>
+      <th colspan="2" style="${ths+groupHdr}">${qCfg.label} Total</th>
       <th rowspan="2" style="${thsN}">BO %</th>
       <th rowspan="2" style="${thsN}">Cons. %</th>
     </tr>
@@ -1590,7 +1596,7 @@ function buildCountryCards(q, mpgF, exactCFNs){
   const tdn=td+'text-align:right;font-variant-numeric:tabular-nums;';
   rows.forEach((r,i)=>{
     const boPct=boQtyTotal>0?r.boQty/boQtyTotal*100:0;
-    const consPct=r.q4Fcst>0?r.q4Dem/r.q4Fcst*100:null;
+    const consPct=r.qTotalFcst>0?r.qTotalDem/r.qTotalFcst*100:null;
     const bg=i%2===0?'':'background:#f7fafe;';
     const boPctSty=boPct>20?'color:#c0392b;font-weight:700':boPct>10?'color:#e07000;font-weight:700':'';
     const consSty=consPct!==null?(consPct>=100?'color:#28a745;font-weight:700':consPct>=80?'color:#f0a500;font-weight:700':'color:#d9534f;font-weight:700'):'';
@@ -1598,11 +1604,11 @@ function buildCountryCards(q, mpgF, exactCFNs){
       <td style="${td}white-space:nowrap">${r.flag} ${esc(r.cKey.length>20?r.cKey.substring(0,19)+'…':r.cKey)}</td>
       <td style="${tdn}">${fmtV(r.boVal)}</td>
       <td style="${tdn}">${fmtQ(r.boQty)}</td>
-      <td style="${tdn}">${fmtQ(r.mFcst.feb)}</td><td style="${tdn}">${fmtQ(r.mDem.feb)}</td>
-      <td style="${tdn}">${fmtQ(r.mFcst.mar)}</td><td style="${tdn}">${fmtQ(r.mDem.mar)}</td>
-      <td style="${tdn}">${fmtQ(r.mFcst.apr)}</td><td style="${tdn}">${fmtQ(r.mDem.apr)}</td>
-      <td style="${tdn}font-weight:600;color:#0056a3">${fmtQ(r.q4Fcst)}</td>
-      <td style="${tdn}font-weight:600;color:#1a5c35">${fmtQ(r.q4Dem)}</td>
+      <td style="${tdn}">${fmtQ(r.mFcst[m0])}</td><td style="${tdn}">${fmtQ(r.mDem[m0])}</td>
+      <td style="${tdn}">${fmtQ(r.mFcst[m1])}</td><td style="${tdn}">${fmtQ(r.mDem[m1])}</td>
+      <td style="${tdn}">${fmtQ(r.mFcst[m2])}</td><td style="${tdn}">${fmtQ(r.mDem[m2])}</td>
+      <td style="${tdn}font-weight:600;color:#0056a3">${fmtQ(r.qTotalFcst)}</td>
+      <td style="${tdn}font-weight:600;color:#1a5c35">${fmtQ(r.qTotalDem)}</td>
       <td style="${tdn+boPctSty}">${fmtPct(boPct)}</td>
       <td style="${tdn+consSty}">${fmtPct(consPct)}</td>
     </tr>`;
@@ -1610,18 +1616,18 @@ function buildCountryCards(q, mpgF, exactCFNs){
 
   // ── WEU TOTAL row ──────────────────────────────────────────────────────────
   const tot = rows.reduce((acc,r)=>({
-    boVal:    acc.boVal    + r.boVal,
-    boQty:    acc.boQty    + r.boQty,
-    febFcst:  acc.febFcst  + r.mFcst.feb,
-    febDem:   acc.febDem   + r.mDem.feb,
-    marFcst:  acc.marFcst  + r.mFcst.mar,
-    marDem:   acc.marDem   + r.mDem.mar,
-    aprFcst:  acc.aprFcst  + r.mFcst.apr,
-    aprDem:   acc.aprDem   + r.mDem.apr,
-    q4Fcst:   acc.q4Fcst   + r.q4Fcst,
-    q4Dem:    acc.q4Dem    + r.q4Dem,
-  }), {boVal:0,boQty:0,febFcst:0,febDem:0,marFcst:0,marDem:0,aprFcst:0,aprDem:0,q4Fcst:0,q4Dem:0});
-  const totConsPct = tot.q4Fcst>0 ? tot.q4Dem/tot.q4Fcst*100 : null;
+    boVal:   acc.boVal   + r.boVal,
+    boQty:   acc.boQty   + r.boQty,
+    m0Fcst:  acc.m0Fcst  + r.mFcst[m0],
+    m0Dem:   acc.m0Dem   + r.mDem[m0],
+    m1Fcst:  acc.m1Fcst  + r.mFcst[m1],
+    m1Dem:   acc.m1Dem   + r.mDem[m1],
+    m2Fcst:  acc.m2Fcst  + r.mFcst[m2],
+    m2Dem:   acc.m2Dem   + r.mDem[m2],
+    qFcst:   acc.qFcst   + r.qTotalFcst,
+    qDem:    acc.qDem    + r.qTotalDem,
+  }), {boVal:0,boQty:0,m0Fcst:0,m0Dem:0,m1Fcst:0,m1Dem:0,m2Fcst:0,m2Dem:0,qFcst:0,qDem:0});
+  const totConsPct = tot.qFcst>0 ? tot.qDem/tot.qFcst*100 : null;
   const totConsSty = totConsPct!==null?(totConsPct>=100?'color:#28a745':totConsPct>=80?'color:#f0a500':'color:#d9534f'):'';
   const trs='padding:5px 6px;white-space:nowrap;border-top:2px solid #003366;font-weight:700;font-size:11px;background:#e8f0fc;';
   const trsN=trs+'text-align:right;font-variant-numeric:tabular-nums;';
@@ -1629,11 +1635,11 @@ function buildCountryCards(q, mpgF, exactCFNs){
     <td style="${trs}">🌍 WEU Total</td>
     <td style="${trsN}">${fmtV(tot.boVal)}</td>
     <td style="${trsN}">${fmtQ(tot.boQty)}</td>
-    <td style="${trsN}">${fmtQ(tot.febFcst)}</td><td style="${trsN}">${fmtQ(tot.febDem)}</td>
-    <td style="${trsN}">${fmtQ(tot.marFcst)}</td><td style="${trsN}">${fmtQ(tot.marDem)}</td>
-    <td style="${trsN}">${fmtQ(tot.aprFcst)}</td><td style="${trsN}">${fmtQ(tot.aprDem)}</td>
-    <td style="${trsN}color:#0056a3">${fmtQ(tot.q4Fcst)}</td>
-    <td style="${trsN}color:#1a5c35">${fmtQ(tot.q4Dem)}</td>
+    <td style="${trsN}">${fmtQ(tot.m0Fcst)}</td><td style="${trsN}">${fmtQ(tot.m0Dem)}</td>
+    <td style="${trsN}">${fmtQ(tot.m1Fcst)}</td><td style="${trsN}">${fmtQ(tot.m1Dem)}</td>
+    <td style="${trsN}">${fmtQ(tot.m2Fcst)}</td><td style="${trsN}">${fmtQ(tot.m2Dem)}</td>
+    <td style="${trsN}color:#0056a3">${fmtQ(tot.qFcst)}</td>
+    <td style="${trsN}color:#1a5c35">${fmtQ(tot.qDem)}</td>
     <td style="${trsN}">100%</td>
     <td style="${trsN+totConsSty}">${fmtPct(totConsPct)}</td>
   </tr>`;
@@ -1821,6 +1827,23 @@ function _buildFcstDemandCharts(q, mpgF, exactCFNs){
 // ===================== SCATTER CHART =====================
 let bodevScatterInst=null;
 let activeFilter='all';
+// Quarter configuration — maps quarter key to month keys, CEMA keys, display labels
+const QUARTER_CFG = {
+  q4: { months:['feb','mar','apr'], cemaMths:['cema_feb','cema_mar','cema_apr'], labels:['Feb','Mar','Apr'], label:'Q4' },
+  q3: { months:['nov','dec','jan'], cemaMths:['cema_nov','cema_dec','cema_jan'], labels:['Nov','Dec','Jan'], label:'Q3' },
+};
+// Country table quarter selection (q4 / q3)
+let _countryTableQuarter = 'q4';
+function setCountryQuarter(q){
+  _countryTableQuarter = q;
+  ['q4','q3'].forEach(v=>{
+    const b=document.getElementById('cquarter-btn-'+v);
+    if(b) b.classList.toggle('active', v===q);
+  });
+  const qv  = (document.getElementById('global-cfn')||{value:''}).value.trim().toLowerCase();
+  const mpgF= (document.getElementById('global-mpg')||{value:''}).value;
+  buildCountryCards(qv, mpgF, (typeof cfnSelectedSet!=='undefined'&&cfnSelectedSet.length>0)?cfnSelectedSet:[]);
+}
 // Country table lag selection (lag0 / lag1 / lag2)
 let _countryTableLag = 'lag0';
 function setCountryLag(lag){
@@ -3013,10 +3036,10 @@ const OV_DEFS = [
 // FCST_LAG2_DATA[fkey][CFN] = Consensus_Forecast_Lag_2
 // DEMAND_DATA[fkey][CFN]    = Demand
 // CEMA_BO_QTY_MAP[CFN]      = Backorder QTY from E2E_BO_CEMA file
-const FCST_DATA         = {feb:null,mar:null,apr:null,cema_feb:null,cema_mar:null,cema_apr:null};
-const FCST_LAG1_DATA    = {feb:null,mar:null,apr:null,cema_feb:null,cema_mar:null,cema_apr:null};
-const FCST_LAG2_DATA    = {feb:null,mar:null,apr:null,cema_feb:null,cema_mar:null,cema_apr:null};
-const DEMAND_DATA       = {feb:null,mar:null,apr:null,cema_feb:null,cema_mar:null,cema_apr:null};
+const FCST_DATA         = {nov:null,dec:null,jan:null,cema_nov:null,cema_dec:null,cema_jan:null,feb:null,mar:null,apr:null,cema_feb:null,cema_mar:null,cema_apr:null};
+const FCST_LAG1_DATA    = {nov:null,dec:null,jan:null,cema_nov:null,cema_dec:null,cema_jan:null,feb:null,mar:null,apr:null,cema_feb:null,cema_mar:null,cema_apr:null};
+const FCST_LAG2_DATA    = {nov:null,dec:null,jan:null,cema_nov:null,cema_dec:null,cema_jan:null,feb:null,mar:null,apr:null,cema_feb:null,cema_mar:null,cema_apr:null};
+const DEMAND_DATA       = {nov:null,dec:null,jan:null,cema_nov:null,cema_dec:null,cema_jan:null,feb:null,mar:null,apr:null,cema_feb:null,cema_mar:null,cema_apr:null};
 const CEMA_BO_QTY_MAP   = {}; // CFN → BO_QTY from E2E_BO_CEMA
 const CEMA_BO_VAL_MAP   = {}; // CFN → BO_Value from E2E_BO_CEMA
 
@@ -3034,6 +3057,12 @@ const FILE_STRIP_DEFS = [
   { label:'Feb Fcst CEMA', nameKey:'fcst_cema_feb_name', atKey:'fcst_cema_feb_at' },
   { label:'Mar Fcst CEMA', nameKey:'fcst_cema_mar_name', atKey:'fcst_cema_mar_at' },
   { label:'Apr Fcst CEMA', nameKey:'fcst_cema_apr_name', atKey:'fcst_cema_apr_at' },
+  { label:'Nov Fcst WEU',  nameKey:'fcst_nov_name',      atKey:'fcst_nov_at'      },
+  { label:'Dec Fcst WEU',  nameKey:'fcst_dec_name',      atKey:'fcst_dec_at'      },
+  { label:'Jan Fcst WEU',  nameKey:'fcst_jan_name',      atKey:'fcst_jan_at'      },
+  { label:'Nov Fcst CEMA', nameKey:'fcst_cema_nov_name', atKey:'fcst_cema_nov_at' },
+  { label:'Dec Fcst CEMA', nameKey:'fcst_cema_dec_name', atKey:'fcst_cema_dec_at' },
+  { label:'Jan Fcst CEMA', nameKey:'fcst_cema_jan_name', atKey:'fcst_cema_jan_at' },
 ];
 
 // ── Filename patterns for auto-matching when loading from a folder ─────────
@@ -3067,10 +3096,18 @@ const FOLDER_MATCHERS = [
   { key:'cema_feb', test: n => n.includes('FCST') && n.includes('CEMA') && (n.includes('M10') || n.includes('FEB')) },
   { key:'cema_mar', test: n => n.includes('FCST') && n.includes('CEMA') && (n.includes('M11') || n.includes('MAR')) },
   { key:'cema_apr', test: n => n.includes('FCST') && n.includes('CEMA') && (n.includes('M12') || n.includes('APR')) },
+  // ── WEU Q3 forecast months (fiscal codes only) ────────────────────────────────
+  { key:'nov', test: n => n.includes('FCST') && n.includes('WESTERN') && n.includes('M07') },
+  { key:'dec', test: n => n.includes('FCST') && n.includes('WESTERN') && n.includes('M08') },
+  { key:'jan', test: n => n.includes('FCST') && n.includes('WESTERN') && n.includes('M09') },
+  // ── CEMA Q3 forecast months ───────────────────────────────────────────────────
+  { key:'cema_nov', test: n => n.includes('FCST') && n.includes('CEMA') && (n.includes('M07') || n.includes('NOV')) },
+  { key:'cema_dec', test: n => n.includes('FCST') && n.includes('CEMA') && (n.includes('M08') || n.includes('DEC')) },
+  { key:'cema_jan', test: n => n.includes('FCST') && n.includes('CEMA') && (n.includes('M09') || n.includes('JAN')) },
 ];
 // FCST keys where one physical file may legitimately fill multiple slots
 // (e.g. a combined WEU+CEMA file with both WESTERN and CEMA in the name)
-const FCST_MULTI_KEYS = new Set(['feb','mar','apr','cema_feb','cema_mar','cema_apr']);
+const FCST_MULTI_KEYS = new Set(['nov','dec','jan','cema_nov','cema_dec','cema_jan','feb','mar','apr','cema_feb','cema_mar','cema_apr']);
 
 // ── Subfolder routing: which numbered subfolder holds which file type ──────
 // Normalised subfolder name (uppercase, non-alnum → '_') is tested against each rule.
@@ -3118,6 +3155,12 @@ const ALL_FILE_KEYS = {
   cema_feb: {label:'Feb Fcst CEMA', idbKey:'fcst_handle_cema_feb', bytesKey:'bytes_cema_feb', process:(f)=>processFCSTFile(f,'cema_feb'), lsKey:'fcst_cema_feb_name'},
   cema_mar: {label:'Mar Fcst CEMA', idbKey:'fcst_handle_cema_mar', bytesKey:'bytes_cema_mar', process:(f)=>processFCSTFile(f,'cema_mar'), lsKey:'fcst_cema_mar_name'},
   cema_apr: {label:'Apr Fcst CEMA', idbKey:'fcst_handle_cema_apr', bytesKey:'bytes_cema_apr', process:(f)=>processFCSTFile(f,'cema_apr'), lsKey:'fcst_cema_apr_name'},
+  nov:      {label:'Nov Fcst WEU',  idbKey:'fcst_handle_nov',      bytesKey:'bytes_nov',      process:(f)=>processFCSTFile(f,'nov'),      lsKey:'fcst_nov_name'},
+  dec:      {label:'Dec Fcst WEU',  idbKey:'fcst_handle_dec',      bytesKey:'bytes_dec',      process:(f)=>processFCSTFile(f,'dec'),      lsKey:'fcst_dec_name'},
+  jan:      {label:'Jan Fcst WEU',  idbKey:'fcst_handle_jan',      bytesKey:'bytes_jan',      process:(f)=>processFCSTFile(f,'jan'),      lsKey:'fcst_jan_name'},
+  cema_nov: {label:'Nov Fcst CEMA', idbKey:'fcst_handle_cema_nov', bytesKey:'bytes_cema_nov', process:(f)=>processFCSTFile(f,'cema_nov'), lsKey:'fcst_cema_nov_name'},
+  cema_dec: {label:'Dec Fcst CEMA', idbKey:'fcst_handle_cema_dec', bytesKey:'bytes_cema_dec', process:(f)=>processFCSTFile(f,'cema_dec'), lsKey:'fcst_cema_dec_name'},
+  cema_jan: {label:'Jan Fcst CEMA', idbKey:'fcst_handle_cema_jan', bytesKey:'bytes_cema_jan', process:(f)=>processFCSTFile(f,'cema_jan'), lsKey:'fcst_cema_jan_name'},
 };
 // ===================== INIT =====================
 updateKPIs();buildCharts();buildFcstDemandCharts();buildTopBO();
@@ -4036,9 +4079,9 @@ async function loadFromFolder(){
       for(const entry of result.fcstExtras){
         try{
           const file = await entry.getFile();
-          // Only process Q4 month files (FEB / MAR / APR) — skip all other months
+          // Only process Q3 (NOV/DEC/JAN) and Q4 (FEB/MAR/APR) month files — skip all other months
           const _fm = _fcstTargetMonthFromFileName(file.name);
-          if(!_fm || !['FEB','MAR','APR'].includes(_fm)) continue;
+          if(!_fm || !['NOV','DEC','JAN','FEB','MAR','APR'].includes(_fm)) continue;
           const fdet = await _readFcstDetails(file);
           const fKey = _fcstCountryKey(file.name);
           _accumulateFcstMap(fKey, fdet, _myFcstGen);
