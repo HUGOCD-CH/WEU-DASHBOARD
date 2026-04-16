@@ -592,7 +592,7 @@ body.dark-mode .country-cards-empty{color:#5a7a9a;}
           <div class="chart-wrap-xs"><canvas id="weuTotalChart"></canvas></div>
         </div>
         <div>
-          <div class="fcst-region-label" style="color:#1a5c35">🌿 CEMA</div>
+          <div class="fcst-region-label" id="fcst-cema-label" style="color:#1a5c35">🌿 CEMA</div>
           <div class="chart-wrap"><canvas id="cemaFcstChart"></canvas></div>
           <div class="chart-wrap-xs"><canvas id="cemaTotalChart"></canvas></div>
         </div>
@@ -1453,10 +1453,11 @@ function _buildCountryGlobalView(grid, selUpper, q, mpgF, hasFilter, lag){
     const q4Dem=r.mDem[gm0]+r.mDem[gm1]+r.mDem[gm2];
     const boPct=boQtyTotal>0?r.boQty/boQtyTotal*100:0;
     const consPct=q4Fcst>0?q4Dem/q4Fcst*100:null;
-    const bg=i%2===0?'':'background:#f7fafe;';
+    const isSelectedG=(typeof _selectedRegionKey!=='undefined')&&_selectedRegionKey===r.cKey;
+    const bg=isSelectedG?'background:#dbeafe;outline:2px solid #0056a3;outline-offset:-2px;':i%2===0?'':'background:#f7fafe;';
     const boPctSty=boPct>20?'color:#c0392b;font-weight:700':boPct>10?'color:#e07000;font-weight:700':'';
     const consSty=consPct!==null?(consPct>=100?'color:#28a745;font-weight:700':consPct>=80?'color:#f0a500;font-weight:700':'color:#d9534f;font-weight:700'):'';
-    html+=`<tr style="${bg}">
+    html+=`<tr style="cursor:pointer;${bg}" onclick="selectCountryRow('${esc(r.cKey)}')">
       <td style="${td}font-weight:600">${r.flag} ${esc(r.cKey)}</td>
       <td style="${tdn}">${fmtV(r.boVal)}</td>
       <td style="${tdn}">${fmtQ(r.boQty)}</td>
@@ -1599,10 +1600,11 @@ function buildCountryCards(q, mpgF, exactCFNs){
   rows.forEach((r,i)=>{
     const boPct=boQtyTotal>0?r.boQty/boQtyTotal*100:0;
     const consPct=r.qTotalFcst>0?r.qTotalDem/r.qTotalFcst*100:null;
-    const bg=i%2===0?'':'background:#f7fafe;';
+    const isSelected=(typeof _selectedRegionKey!=='undefined')&&_selectedRegionKey===r.cKey;
+    const bg=isSelected?'background:#dbeafe;outline:2px solid #0056a3;outline-offset:-2px;':i%2===0?'':'background:#f7fafe;';
     const boPctSty=boPct>20?'color:#c0392b;font-weight:700':boPct>10?'color:#e07000;font-weight:700':'';
     const consSty=consPct!==null?(consPct>=100?'color:#28a745;font-weight:700':consPct>=80?'color:#f0a500;font-weight:700':'color:#d9534f;font-weight:700'):'';
-    html+=`<tr style="${bg}">
+    html+=`<tr style="cursor:pointer;${bg}" onclick="selectCountryRow('${esc(r.cKey)}')">
       <td style="${td}white-space:nowrap">${r.flag} ${esc(r.cKey.length>20?r.cKey.substring(0,19)+'…':r.cKey)}</td>
       <td style="${tdn}">${fmtV(r.boVal)}</td>
       <td style="${tdn}">${fmtQ(r.boQty)}</td>
@@ -1691,19 +1693,55 @@ function _buildFcstDemandCharts(q, mpgF, exactCFNs){
     let s=0; cfnFilter.forEach(cfn=>{s+=(d[cfn]||0);}); return s;
   }
 
+  // Quarter-aware month keys
+  const qCfg     = QUARTER_CFG[_countryTableQuarter||'q4'];
+  const qMths    = qCfg.months;    // e.g. ['feb','mar','apr']
+  const qCemMths = qCfg.cemaMths;  // e.g. ['cema_feb','cema_mar','cema_apr']
+  const qLabels  = qCfg.labels;    // e.g. ['Feb','Mar','Apr']
+
   // WEU — all three lag tiers + demand (QTY)
-  const wL2=['feb','mar','apr'].map(k=>sumFor(FCST_LAG2_DATA,k));
-  const wL1=['feb','mar','apr'].map(k=>sumFor(FCST_LAG1_DATA,k));
-  const wL0=['feb','mar','apr'].map(k=>sumFor(FCST_DATA,k));
-  const wD =['feb','mar','apr'].map(k=>sumFor(DEMAND_DATA,k));
+  const wL2=qMths.map(k=>sumFor(FCST_LAG2_DATA,k));
+  const wL1=qMths.map(k=>sumFor(FCST_LAG1_DATA,k));
+  const wL0=qMths.map(k=>sumFor(FCST_DATA,k));
+  const wD =qMths.map(k=>sumFor(DEMAND_DATA,k));
   const wL2T=wL2.reduce((s,v)=>s+v,0), wL1T=wL1.reduce((s,v)=>s+v,0);
   const wL0T=wL0.reduce((s,v)=>s+v,0), wDT=wD.reduce((s,v)=>s+v,0);
 
-  // CEMA — all three lag tiers + demand (QTY)
-  const cL2=['cema_feb','cema_mar','cema_apr'].map(k=>sumFor(FCST_LAG2_DATA,k));
-  const cL1=['cema_feb','cema_mar','cema_apr'].map(k=>sumFor(FCST_LAG1_DATA,k));
-  const cL0=['cema_feb','cema_mar','cema_apr'].map(k=>sumFor(FCST_DATA,k));
-  const cD =['cema_feb','cema_mar','cema_apr'].map(k=>sumFor(DEMAND_DATA,k));
+  // Right chart — selected region or default CEMA
+  let cL2, cL1, cL0, cD;
+  const selKey = _selectedRegionKey;
+  if(selKey){
+    // Helper: sum an object's values respecting cfnFilter
+    const _sumObj = obj => {
+      if(!obj) return 0;
+      if(!cfnFilter) return Object.values(obj).reduce((s,v)=>s+(v||0),0);
+      let s=0; cfnFilter.forEach(c=>{s+=(obj[c]||0);}); return s;
+    };
+    // Extract {l2,l1,l0,d} for one month from the selected region
+    const _regionMonth = (m, cm) => {
+      // Case 1: per-country COUNTRY_FCST_MAP entry (has all lag tiers)
+      const fcm = (typeof COUNTRY_FCST_MAP!=='undefined') && COUNTRY_FCST_MAP[selKey];
+      if(fcm && fcm[m]){
+        const me=fcm[m];
+        return { l2:_sumObj(me.cfnFcst2), l1:_sumObj(me.cfnFcst1), l0:_sumObj(me.cfnFcst), d:_sumObj(me.cfnDemand) };
+      }
+      // Case 2: 'WEU' — direct month keys
+      if(selKey==='WEU') return { l2:sumFor(FCST_LAG2_DATA,m), l1:sumFor(FCST_LAG1_DATA,m), l0:sumFor(FCST_DATA,m), d:sumFor(DEMAND_DATA,m) };
+      // Case 3: 'CEMA' — CEMA month keys
+      if(selKey==='CEMA') return { l2:sumFor(FCST_LAG2_DATA,cm), l1:sumFor(FCST_LAG1_DATA,cm), l0:sumFor(FCST_DATA,cm), d:sumFor(DEMAND_DATA,cm) };
+      // Case 4: other global region — composite keys (e.g. 'usa_feb')
+      const rk=selKey.toLowerCase().replace(/\s+/g,'_');
+      return { l2:sumFor(FCST_LAG2_DATA,rk+'_'+m), l1:sumFor(FCST_LAG1_DATA,rk+'_'+m), l0:sumFor(FCST_DATA,rk+'_'+m), d:sumFor(DEMAND_DATA,rk+'_'+m) };
+    };
+    const selData = qMths.map((m,i)=>_regionMonth(m, qCemMths[i]));
+    cL2=selData.map(x=>x.l2); cL1=selData.map(x=>x.l1);
+    cL0=selData.map(x=>x.l0); cD =selData.map(x=>x.d);
+  } else {
+    cL2=qCemMths.map(k=>sumFor(FCST_LAG2_DATA,k));
+    cL1=qCemMths.map(k=>sumFor(FCST_LAG1_DATA,k));
+    cL0=qCemMths.map(k=>sumFor(FCST_DATA,k));
+    cD =qCemMths.map(k=>sumFor(DEMAND_DATA,k));
+  }
   const cL2T=cL2.reduce((s,v)=>s+v,0), cL1T=cL1.reduce((s,v)=>s+v,0);
   const cL0T=cL0.reduce((s,v)=>s+v,0), cDT=cD.reduce((s,v)=>s+v,0);
 
@@ -1777,9 +1815,16 @@ function _buildFcstDemandCharts(q, mpgF, exactCFNs){
   if(weuTotalCI){weuTotalCI.destroy();weuTotalCI=null;}
   if(cemaTotalCI){cemaTotalCI.destroy();cemaTotalCI=null;}
 
+  // Update right-chart panel label
+  const _cemLblEl=document.getElementById('fcst-cema-label');
+  if(_cemLblEl){
+    if(_selectedRegionKey){ _cemLblEl.textContent='📍 '+_selectedRegionKey; _cemLblEl.style.color='#0056a3'; }
+    else                  { _cemLblEl.textContent='🌿 CEMA';                _cemLblEl.style.color='#1a5c35'; }
+  }
+
   // WEU monthly chart — Lag2 / Lag1 / Lag0 / Demand + CONS% line
   weuFcstCI=new Chart(document.getElementById('weuFcstChart'),{
-    data:{labels:['Feb','Mar','Apr'],datasets:[
+    data:{labels:qLabels,datasets:[
       barDs('Fcst Lag 2',wL2,C_L2),
       barDs('Fcst Lag 1',wL1,C_L1),
       barDs('Fcst Lag 0',wL0,C_L0),
@@ -1801,9 +1846,9 @@ function _buildFcstDemandCharts(q, mpgF, exactCFNs){
     options:makeTotalOpts()
   });
 
-  // CEMA monthly chart — Lag2 / Lag1 / Lag0 / Demand + CONS% line
+  // Right-panel monthly chart — selected region or CEMA
   cemaFcstCI=new Chart(document.getElementById('cemaFcstChart'),{
-    data:{labels:['Feb','Mar','Apr'],datasets:[
+    data:{labels:qLabels,datasets:[
       barDs('Fcst Lag 2',cL2,C_L2),
       barDs('Fcst Lag 1',cL1,C_L1),
       barDs('Fcst Lag 0',cL0,C_L0),
@@ -1838,6 +1883,9 @@ const QUARTER_CFG = {
 };
 // Country table quarter selection
 let _countryTableQuarter = 'q4';
+// Key of the currently-selected country/region row (null = show default CEMA in right chart)
+let _selectedRegionKey = null;
+
 function setCountryQuarter(q){
   _countryTableQuarter = q;
   ['q1','q2','q3','q4'].forEach(v=>{
@@ -1847,6 +1895,15 @@ function setCountryQuarter(q){
   const qv  = (document.getElementById('global-cfn')||{value:''}).value.trim().toLowerCase();
   const mpgF= (document.getElementById('global-mpg')||{value:''}).value;
   buildCountryCards(qv, mpgF, (typeof cfnSelectedSet!=='undefined'&&cfnSelectedSet.length>0)?cfnSelectedSet:[]);
+  buildFcstDemandCharts();
+}
+
+function selectCountryRow(key){
+  _selectedRegionKey = (_selectedRegionKey === key) ? null : key;
+  const qv  = (document.getElementById('global-cfn')||{value:''}).value.trim().toLowerCase();
+  const mpgF= (document.getElementById('global-mpg')||{value:''}).value;
+  buildCountryCards(qv, mpgF, (typeof cfnSelectedSet!=='undefined'&&cfnSelectedSet.length>0)?cfnSelectedSet:[]);
+  buildFcstDemandCharts();
 }
 // Country table lag selection (lag0 / lag1 / lag2)
 let _countryTableLag = 'lag0';
