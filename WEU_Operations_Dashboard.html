@@ -624,8 +624,10 @@ body.dark-mode .country-cards-empty{color:#5a7a9a;}
           <button id="clag-btn-lag2" class="lag-btn" onclick="setCountryLag('lag2')">Lag 2</button>
         </div>
         <div class="lag-selector" id="cquarter-toggle">
-          <button id="cquarter-btn-q4" class="lag-btn active" onclick="setCountryQuarter('q4')">Q4</button>
+          <button id="cquarter-btn-q1" class="lag-btn" onclick="setCountryQuarter('q1')">Q1</button>
+          <button id="cquarter-btn-q2" class="lag-btn" onclick="setCountryQuarter('q2')">Q2</button>
           <button id="cquarter-btn-q3" class="lag-btn" onclick="setCountryQuarter('q3')">Q3</button>
+          <button id="cquarter-btn-q4" class="lag-btn active" onclick="setCountryQuarter('q4')">Q4</button>
         </div>
         <div id="creg-toggle" style="display:flex;gap:0;border:1.5px solid #d0dff0;border-radius:8px;overflow:hidden;font-size:11px;font-weight:700;">
           <button id="creg-btn-global" onclick="setCountryView('global')"
@@ -1829,14 +1831,16 @@ let bodevScatterInst=null;
 let activeFilter='all';
 // Quarter configuration — maps quarter key to month keys, CEMA keys, display labels
 const QUARTER_CFG = {
-  q4: { months:['feb','mar','apr'], cemaMths:['cema_feb','cema_mar','cema_apr'], labels:['Feb','Mar','Apr'], label:'Q4' },
+  q1: { months:['may','jun','jul'], cemaMths:['cema_may','cema_jun','cema_jul'], labels:['May','Jun','Jul'], label:'Q1' },
+  q2: { months:['aug','sep','oct'], cemaMths:['cema_aug','cema_sep','cema_oct'], labels:['Aug','Sep','Oct'], label:'Q2' },
   q3: { months:['nov','dec','jan'], cemaMths:['cema_nov','cema_dec','cema_jan'], labels:['Nov','Dec','Jan'], label:'Q3' },
+  q4: { months:['feb','mar','apr'], cemaMths:['cema_feb','cema_mar','cema_apr'], labels:['Feb','Mar','Apr'], label:'Q4' },
 };
-// Country table quarter selection (q4 / q3)
+// Country table quarter selection
 let _countryTableQuarter = 'q4';
 function setCountryQuarter(q){
   _countryTableQuarter = q;
-  ['q4','q3'].forEach(v=>{
+  ['q1','q2','q3','q4'].forEach(v=>{
     const b=document.getElementById('cquarter-btn-'+v);
     if(b) b.classList.toggle('active', v===q);
   });
@@ -3036,10 +3040,10 @@ const OV_DEFS = [
 // FCST_LAG2_DATA[fkey][CFN] = Consensus_Forecast_Lag_2
 // DEMAND_DATA[fkey][CFN]    = Demand
 // CEMA_BO_QTY_MAP[CFN]      = Backorder QTY from E2E_BO_CEMA file
-const FCST_DATA         = {nov:null,dec:null,jan:null,cema_nov:null,cema_dec:null,cema_jan:null,feb:null,mar:null,apr:null,cema_feb:null,cema_mar:null,cema_apr:null};
-const FCST_LAG1_DATA    = {nov:null,dec:null,jan:null,cema_nov:null,cema_dec:null,cema_jan:null,feb:null,mar:null,apr:null,cema_feb:null,cema_mar:null,cema_apr:null};
-const FCST_LAG2_DATA    = {nov:null,dec:null,jan:null,cema_nov:null,cema_dec:null,cema_jan:null,feb:null,mar:null,apr:null,cema_feb:null,cema_mar:null,cema_apr:null};
-const DEMAND_DATA       = {nov:null,dec:null,jan:null,cema_nov:null,cema_dec:null,cema_jan:null,feb:null,mar:null,apr:null,cema_feb:null,cema_mar:null,cema_apr:null};
+const FCST_DATA         = {may:null,jun:null,jul:null,cema_may:null,cema_jun:null,cema_jul:null,aug:null,sep:null,oct:null,cema_aug:null,cema_sep:null,cema_oct:null,nov:null,dec:null,jan:null,cema_nov:null,cema_dec:null,cema_jan:null,feb:null,mar:null,apr:null,cema_feb:null,cema_mar:null,cema_apr:null};
+const FCST_LAG1_DATA    = {may:null,jun:null,jul:null,cema_may:null,cema_jun:null,cema_jul:null,aug:null,sep:null,oct:null,cema_aug:null,cema_sep:null,cema_oct:null,nov:null,dec:null,jan:null,cema_nov:null,cema_dec:null,cema_jan:null,feb:null,mar:null,apr:null,cema_feb:null,cema_mar:null,cema_apr:null};
+const FCST_LAG2_DATA    = {may:null,jun:null,jul:null,cema_may:null,cema_jun:null,cema_jul:null,aug:null,sep:null,oct:null,cema_aug:null,cema_sep:null,cema_oct:null,nov:null,dec:null,jan:null,cema_nov:null,cema_dec:null,cema_jan:null,feb:null,mar:null,apr:null,cema_feb:null,cema_mar:null,cema_apr:null};
+const DEMAND_DATA       = {may:null,jun:null,jul:null,cema_may:null,cema_jun:null,cema_jul:null,aug:null,sep:null,oct:null,cema_aug:null,cema_sep:null,cema_oct:null,nov:null,dec:null,jan:null,cema_nov:null,cema_dec:null,cema_jan:null,feb:null,mar:null,apr:null,cema_feb:null,cema_mar:null,cema_apr:null};
 const CEMA_BO_QTY_MAP   = {}; // CFN → BO_QTY from E2E_BO_CEMA
 const CEMA_BO_VAL_MAP   = {}; // CFN → BO_Value from E2E_BO_CEMA
 
@@ -3057,6 +3061,18 @@ const FILE_STRIP_DEFS = [
   { label:'Feb Fcst CEMA', nameKey:'fcst_cema_feb_name', atKey:'fcst_cema_feb_at' },
   { label:'Mar Fcst CEMA', nameKey:'fcst_cema_mar_name', atKey:'fcst_cema_mar_at' },
   { label:'Apr Fcst CEMA', nameKey:'fcst_cema_apr_name', atKey:'fcst_cema_apr_at' },
+  { label:'May Fcst WEU',  nameKey:'fcst_may_name',      atKey:'fcst_may_at'      },
+  { label:'Jun Fcst WEU',  nameKey:'fcst_jun_name',      atKey:'fcst_jun_at'      },
+  { label:'Jul Fcst WEU',  nameKey:'fcst_jul_name',      atKey:'fcst_jul_at'      },
+  { label:'May Fcst CEMA', nameKey:'fcst_cema_may_name', atKey:'fcst_cema_may_at' },
+  { label:'Jun Fcst CEMA', nameKey:'fcst_cema_jun_name', atKey:'fcst_cema_jun_at' },
+  { label:'Jul Fcst CEMA', nameKey:'fcst_cema_jul_name', atKey:'fcst_cema_jul_at' },
+  { label:'Aug Fcst WEU',  nameKey:'fcst_aug_name',      atKey:'fcst_aug_at'      },
+  { label:'Sep Fcst WEU',  nameKey:'fcst_sep_name',      atKey:'fcst_sep_at'      },
+  { label:'Oct Fcst WEU',  nameKey:'fcst_oct_name',      atKey:'fcst_oct_at'      },
+  { label:'Aug Fcst CEMA', nameKey:'fcst_cema_aug_name', atKey:'fcst_cema_aug_at' },
+  { label:'Sep Fcst CEMA', nameKey:'fcst_cema_sep_name', atKey:'fcst_cema_sep_at' },
+  { label:'Oct Fcst CEMA', nameKey:'fcst_cema_oct_name', atKey:'fcst_cema_oct_at' },
   { label:'Nov Fcst WEU',  nameKey:'fcst_nov_name',      atKey:'fcst_nov_at'      },
   { label:'Dec Fcst WEU',  nameKey:'fcst_dec_name',      atKey:'fcst_dec_at'      },
   { label:'Jan Fcst WEU',  nameKey:'fcst_jan_name',      atKey:'fcst_jan_at'      },
@@ -3096,6 +3112,22 @@ const FOLDER_MATCHERS = [
   { key:'cema_feb', test: n => n.includes('FCST') && n.includes('CEMA') && (n.includes('M10') || n.includes('FEB')) },
   { key:'cema_mar', test: n => n.includes('FCST') && n.includes('CEMA') && (n.includes('M11') || n.includes('MAR')) },
   { key:'cema_apr', test: n => n.includes('FCST') && n.includes('CEMA') && (n.includes('M12') || n.includes('APR')) },
+  // ── WEU Q1 forecast months (fiscal codes only) ────────────────────────────────
+  { key:'may', test: n => n.includes('FCST') && n.includes('WESTERN') && n.includes('M01') },
+  { key:'jun', test: n => n.includes('FCST') && n.includes('WESTERN') && n.includes('M02') },
+  { key:'jul', test: n => n.includes('FCST') && n.includes('WESTERN') && n.includes('M03') },
+  // ── CEMA Q1 forecast months ───────────────────────────────────────────────────
+  { key:'cema_may', test: n => n.includes('FCST') && n.includes('CEMA') && (n.includes('M01') || n.includes('MAY')) },
+  { key:'cema_jun', test: n => n.includes('FCST') && n.includes('CEMA') && (n.includes('M02') || n.includes('JUN')) },
+  { key:'cema_jul', test: n => n.includes('FCST') && n.includes('CEMA') && (n.includes('M03') || n.includes('JUL')) },
+  // ── WEU Q2 forecast months (fiscal codes only) ────────────────────────────────
+  { key:'aug', test: n => n.includes('FCST') && n.includes('WESTERN') && n.includes('M04') },
+  { key:'sep', test: n => n.includes('FCST') && n.includes('WESTERN') && n.includes('M05') },
+  { key:'oct', test: n => n.includes('FCST') && n.includes('WESTERN') && n.includes('M06') },
+  // ── CEMA Q2 forecast months ───────────────────────────────────────────────────
+  { key:'cema_aug', test: n => n.includes('FCST') && n.includes('CEMA') && (n.includes('M04') || n.includes('AUG')) },
+  { key:'cema_sep', test: n => n.includes('FCST') && n.includes('CEMA') && (n.includes('M05') || n.includes('SEP')) },
+  { key:'cema_oct', test: n => n.includes('FCST') && n.includes('CEMA') && (n.includes('M06') || n.includes('OCT')) },
   // ── WEU Q3 forecast months (fiscal codes only) ────────────────────────────────
   { key:'nov', test: n => n.includes('FCST') && n.includes('WESTERN') && n.includes('M07') },
   { key:'dec', test: n => n.includes('FCST') && n.includes('WESTERN') && n.includes('M08') },
@@ -3106,8 +3138,7 @@ const FOLDER_MATCHERS = [
   { key:'cema_jan', test: n => n.includes('FCST') && n.includes('CEMA') && (n.includes('M09') || n.includes('JAN')) },
 ];
 // FCST keys where one physical file may legitimately fill multiple slots
-// (e.g. a combined WEU+CEMA file with both WESTERN and CEMA in the name)
-const FCST_MULTI_KEYS = new Set(['nov','dec','jan','cema_nov','cema_dec','cema_jan','feb','mar','apr','cema_feb','cema_mar','cema_apr']);
+const FCST_MULTI_KEYS = new Set(['may','jun','jul','cema_may','cema_jun','cema_jul','aug','sep','oct','cema_aug','cema_sep','cema_oct','nov','dec','jan','cema_nov','cema_dec','cema_jan','feb','mar','apr','cema_feb','cema_mar','cema_apr']);
 
 // ── Subfolder routing: which numbered subfolder holds which file type ──────
 // Normalised subfolder name (uppercase, non-alnum → '_') is tested against each rule.
@@ -3155,6 +3186,18 @@ const ALL_FILE_KEYS = {
   cema_feb: {label:'Feb Fcst CEMA', idbKey:'fcst_handle_cema_feb', bytesKey:'bytes_cema_feb', process:(f)=>processFCSTFile(f,'cema_feb'), lsKey:'fcst_cema_feb_name'},
   cema_mar: {label:'Mar Fcst CEMA', idbKey:'fcst_handle_cema_mar', bytesKey:'bytes_cema_mar', process:(f)=>processFCSTFile(f,'cema_mar'), lsKey:'fcst_cema_mar_name'},
   cema_apr: {label:'Apr Fcst CEMA', idbKey:'fcst_handle_cema_apr', bytesKey:'bytes_cema_apr', process:(f)=>processFCSTFile(f,'cema_apr'), lsKey:'fcst_cema_apr_name'},
+  may:      {label:'May Fcst WEU',  idbKey:'fcst_handle_may',      bytesKey:'bytes_may',      process:(f)=>processFCSTFile(f,'may'),      lsKey:'fcst_may_name'},
+  jun:      {label:'Jun Fcst WEU',  idbKey:'fcst_handle_jun',      bytesKey:'bytes_jun',      process:(f)=>processFCSTFile(f,'jun'),      lsKey:'fcst_jun_name'},
+  jul:      {label:'Jul Fcst WEU',  idbKey:'fcst_handle_jul',      bytesKey:'bytes_jul',      process:(f)=>processFCSTFile(f,'jul'),      lsKey:'fcst_jul_name'},
+  cema_may: {label:'May Fcst CEMA', idbKey:'fcst_handle_cema_may', bytesKey:'bytes_cema_may', process:(f)=>processFCSTFile(f,'cema_may'), lsKey:'fcst_cema_may_name'},
+  cema_jun: {label:'Jun Fcst CEMA', idbKey:'fcst_handle_cema_jun', bytesKey:'bytes_cema_jun', process:(f)=>processFCSTFile(f,'cema_jun'), lsKey:'fcst_cema_jun_name'},
+  cema_jul: {label:'Jul Fcst CEMA', idbKey:'fcst_handle_cema_jul', bytesKey:'bytes_cema_jul', process:(f)=>processFCSTFile(f,'cema_jul'), lsKey:'fcst_cema_jul_name'},
+  aug:      {label:'Aug Fcst WEU',  idbKey:'fcst_handle_aug',      bytesKey:'bytes_aug',      process:(f)=>processFCSTFile(f,'aug'),      lsKey:'fcst_aug_name'},
+  sep:      {label:'Sep Fcst WEU',  idbKey:'fcst_handle_sep',      bytesKey:'bytes_sep',      process:(f)=>processFCSTFile(f,'sep'),      lsKey:'fcst_sep_name'},
+  oct:      {label:'Oct Fcst WEU',  idbKey:'fcst_handle_oct',      bytesKey:'bytes_oct',      process:(f)=>processFCSTFile(f,'oct'),      lsKey:'fcst_oct_name'},
+  cema_aug: {label:'Aug Fcst CEMA', idbKey:'fcst_handle_cema_aug', bytesKey:'bytes_cema_aug', process:(f)=>processFCSTFile(f,'cema_aug'), lsKey:'fcst_cema_aug_name'},
+  cema_sep: {label:'Sep Fcst CEMA', idbKey:'fcst_handle_cema_sep', bytesKey:'bytes_cema_sep', process:(f)=>processFCSTFile(f,'cema_sep'), lsKey:'fcst_cema_sep_name'},
+  cema_oct: {label:'Oct Fcst CEMA', idbKey:'fcst_handle_cema_oct', bytesKey:'bytes_cema_oct', process:(f)=>processFCSTFile(f,'cema_oct'), lsKey:'fcst_cema_oct_name'},
   nov:      {label:'Nov Fcst WEU',  idbKey:'fcst_handle_nov',      bytesKey:'bytes_nov',      process:(f)=>processFCSTFile(f,'nov'),      lsKey:'fcst_nov_name'},
   dec:      {label:'Dec Fcst WEU',  idbKey:'fcst_handle_dec',      bytesKey:'bytes_dec',      process:(f)=>processFCSTFile(f,'dec'),      lsKey:'fcst_dec_name'},
   jan:      {label:'Jan Fcst WEU',  idbKey:'fcst_handle_jan',      bytesKey:'bytes_jan',      process:(f)=>processFCSTFile(f,'jan'),      lsKey:'fcst_jan_name'},
@@ -4079,9 +4122,9 @@ async function loadFromFolder(){
       for(const entry of result.fcstExtras){
         try{
           const file = await entry.getFile();
-          // Only process Q3 (NOV/DEC/JAN) and Q4 (FEB/MAR/APR) month files — skip all other months
+          // Only process Q1–Q4 month files — skip any unrecognised months
           const _fm = _fcstTargetMonthFromFileName(file.name);
-          if(!_fm || !['NOV','DEC','JAN','FEB','MAR','APR'].includes(_fm)) continue;
+          if(!_fm || !['MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC','JAN','FEB','MAR','APR'].includes(_fm)) continue;
           const fdet = await _readFcstDetails(file);
           const fKey = _fcstCountryKey(file.name);
           _accumulateFcstMap(fKey, fdet, _myFcstGen);
