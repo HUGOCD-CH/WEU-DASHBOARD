@@ -2507,11 +2507,15 @@ function _renderRegionTop10BO(key){
     return;
   }
 
-  // ── WEU: use ROR_DATA (same as default but keeps the selection label) ──────
+  // ── WEU: top 10 from ROR_DATA, narrow columns (same layout as other regions) ──
   if(key==='WEU'){
+    const items=[...ROR_DATA].filter(r=>(r.BO_Value||0)>0)
+      .sort((a,b)=>(b.BO_Value||0)-(a.BO_Value||0)).slice(0,10)
+      .map(r=>({cfn:r.CFN||'', qty:r.BO_QTY||0, val:r.BO_Value||0}));
+    if(items.length===0){ _renderRegionTop10BO(null); return; }
     if(labelEl) labelEl.textContent='🌍 WEU';
-    if(thead) thead.innerHTML=_weuCols;
-    buildTopBO();
+    if(thead) thead.innerHTML=_regCols;
+    tbody.innerHTML=_renderRows(items);
     return;
   }
 
