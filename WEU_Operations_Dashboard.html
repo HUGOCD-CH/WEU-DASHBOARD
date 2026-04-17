@@ -2974,10 +2974,12 @@ function renderROR(){
       const bg=isActive?'#0a4a8a':'#003366';
       return `<th style="background:${bg};cursor:pointer;user-select:none" onclick="sortROR('${c.key}')" title="Sort by ${c.label}">${c.label}${ind}</th>`;
     }).join('');
-    const weekThs=WEEK_KEYS.map(k=>`<th style="background:#003366;color:#fff;padding:8px 10px;font-size:11px;white-space:nowrap;position:sticky;top:0;z-index:2">${WEEK_LABELS[k]||k}</th>`).join('');
+    const activeWeekKeys=WEEK_KEYS.filter(k=>ROR_DATA.some(r=>r[k]!=null&&r[k]>0));
+    const weekThs=activeWeekKeys.map(k=>`<th style="background:#003366;color:#fff;padding:8px 10px;font-size:11px;white-space:nowrap;position:sticky;top:0;z-index:2">${WEEK_LABELS[k]||k}</th>`).join('');
     thead.innerHTML=`<tr>${fixedThs}${weekThs}</tr>`;
   }
 
+  const activeWeekKeys=WEEK_KEYS.filter(k=>ROR_DATA.some(r=>r[k]!=null&&r[k]>0));
   // Tbody
   document.getElementById('ror-body').innerHTML=rorFiltered.slice(s,s+PAGE_SIZE).map(r=>`<tr>
     <td title="${esc(r.MPG||'')}" style="font-size:10px">${esc((r.MPG||'').replace(/^[A-Z0-9]+ - /,'').substring(0,16))}</td>
@@ -2993,7 +2995,7 @@ function renderROR(){
     <td class="num">${fmtPct(r.BO_Dev_2wk)}</td>
     <td class="num">${fmtImpact(r.BO_Impact_2wk)}</td>
     <td class="num">${fmt(r.DC_Heerlen)}</td><td class="num">${fmt(r.DC_Rolo)}</td><td class="num">${fmt(r.DC_Alcala)}</td><td class="num">${fmt(r.DC_Kits)}</td>
-    ${WEEK_KEYS.map(k=>`<td class="num">${r[k]!==null&&r[k]!==undefined?fmt(r[k]):'—'}</td>`).join('')}
+    ${activeWeekKeys.map(k=>`<td class="num">${r[k]!=null?fmt(r[k]):'—'}</td>`).join('')}
   </tr>`).join('');
   renderPagination('ror-pagination',rorFiltered.length,rorPage,p=>{rorPage=p;renderROR();});
 }
