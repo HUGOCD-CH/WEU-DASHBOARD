@@ -661,8 +661,8 @@ body.dark-mode .country-cards-empty{color:#5a7a9a;}
   </div>
 
   <!-- 4. Top 10 BO Table -->
-  <div class="top-table-wrap">
-    <h3 class="section-title">Top 10 Backorder Items by Value</h3>
+  <div id="weu-top10-wrap" class="top-table-wrap">
+    <h3 class="section-title">📦 Top 10 Backorder Items by Value — <span id="top-bo-region-label" style="color:#0056a3;font-weight:700;">🌍 WEU</span></h3>
     <div class="table-wrap">
     <table>
       <thead><tr><th>MPG</th><th>CFN</th><th>Description</th><th>BO QTY</th><th>BO Value ($)</th><th>Past Due</th><th>Stock EA</th><th>2wk Shipments</th><th>2-Wk Dev %</th><th>Expected $ Impact</th></tr></thead>
@@ -1919,9 +1919,18 @@ function _buildFcstDemandCharts(q, mpgF, exactCFNs){
     const selK=_selectedRegionKey;
     let cBoQty=0;
     if(selK==='WEU') cBoQty=wBoQty;
-    else if(selK && COUNTRY_OO_MAP[selK]) cBoQty=(COUNTRY_OO_MAP[selK].bo||{qty:0}).qty;
-    else if(!selK) cBoQty=COUNTRY_OO_MAP['CEMA']?(COUNTRY_OO_MAP['CEMA'].bo||{qty:0}).qty
-                                                 :Object.values(CEMA_BO_QTY_MAP).reduce((s,v)=>s+(v||0),0);
+    else if(selK){
+      const _sGrp=(typeof COUNTRY_GROUPS!=='undefined')&&COUNTRY_GROUPS.find(g=>g.key===selK);
+      if(_sGrp){
+        // Sum BO qty across all group members
+        _sGrp.members.forEach(m=>{ cBoQty+=(COUNTRY_OO_MAP[m]?.bo?.qty||0); });
+      } else {
+        cBoQty=(COUNTRY_OO_MAP[selK]?.bo?.qty)||0;
+      }
+    } else {
+      cBoQty=COUNTRY_OO_MAP['CEMA']?(COUNTRY_OO_MAP['CEMA'].bo||{qty:0}).qty
+                                    :Object.values(CEMA_BO_QTY_MAP).reduce((s,v)=>s+(v||0),0);
+    }
     cShipT=cFcstActiveT>0?Math.round((cDT-cBoQty)/cFcstActiveT*100*10)/10:null;
   }
 
@@ -2484,11 +2493,20 @@ function buildTopBO(){
   </tr>`).join('');
 }
 function _renderRegionTop10BO(key){
-  const container = document.getElementById('region-top10-bo');
-  const tbody     = document.getElementById('region-top10-body');
-  const nameEl    = document.getElementById('region-top10-name');
+  const container  = document.getElementById('region-top10-bo');
+  const tbody      = document.getElementById('region-top10-body');
+  const nameEl     = document.getElementById('region-top10-name');
+  const weuWrap    = document.getElementById('weu-top10-wrap');
+  const weuLabelEl = document.getElementById('top-bo-region-label');
   if(!container||!tbody) return;
-  if(!key){ container.style.display='none'; return; }
+
+  if(!key){
+    // Deselected — hide region panel, restore WEU table
+    container.style.display='none';
+    if(weuWrap)    weuWrap.style.display='';
+    if(weuLabelEl) weuLabelEl.textContent='🌍 WEU';
+    return;
+  }
 
   // Aggregate cfnQty / cfnVal — support individual country or group key
   const grp = (typeof COUNTRY_GROUPS!=='undefined') && COUNTRY_GROUPS.find(g=>g.key===key);
@@ -2511,9 +2529,15 @@ function _renderRegionTop10BO(key){
     .sort((a,b)=>b.val-a.val)
     .slice(0,10);
 
-  if(items.length===0){ container.style.display='none'; return; }
+  if(items.length===0){
+    // No data for this region — hide region panel, restore WEU table
+    container.style.display='none';
+    if(weuWrap) weuWrap.style.display='';
+    return;
+  }
 
-  if(nameEl) nameEl.textContent = grp ? grp.label.replace(/^[^\w]+/,'') : key;
+  const displayName = grp ? grp.label.replace(/^[^\w\p{Emoji}]+/u,'').trim() : key;
+  if(nameEl) nameEl.textContent = displayName;
 
   const _fmtV=v=>v>=1e6?'$'+(v/1e6).toFixed(2)+'M':'$'+Math.round(v).toLocaleString();
   tbody.innerHTML=items.map(r=>{
@@ -2529,7 +2553,9 @@ function _renderRegionTop10BO(key){
       <td class="num" style="color:#c0392b">${_fmtV(r.val)}</td>
     </tr>`;
   }).join('');
+  // Show region panel, hide WEU table
   container.style.display='block';
+  if(weuWrap) weuWrap.style.display='none';
 }
 
 function _applyKPIRegion(key){
