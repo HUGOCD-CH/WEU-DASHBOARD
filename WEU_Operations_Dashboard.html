@@ -643,6 +643,23 @@ body.dark-mode .country-cards-empty{color:#5a7a9a;}
     </div>
   </div>
 
+  <!-- 3d. Region Top 10 BO Items (shown when a region/group is selected) -->
+  <div id="region-top10-bo" class="chart-card" style="display:none;margin:8px 0 0 0;">
+    <h3 class="section-title" style="margin-bottom:8px;">
+      📦 Top 10 Backorder Items by Value —
+      <span id="region-top10-name" style="color:#0056a3;font-weight:700;"></span>
+    </h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th>MPG</th><th>CFN</th><th>Description</th>
+          <th class="num">BO QTY</th><th class="num">BO Value ($)</th>
+        </tr></thead>
+        <tbody id="region-top10-body"></tbody>
+      </table>
+    </div>
+  </div>
+
   <!-- 4. Top 10 BO Table -->
   <div class="top-table-wrap">
     <h3 class="section-title">Top 10 Backorder Items by Value</h3>
@@ -1618,28 +1635,96 @@ function buildCountryCards(q, mpgF, exactCFNs){
 
   const td='padding:4px 6px;border-bottom:1px solid #eaeef5;white-space:nowrap;';
   const tdn=td+'text-align:right;font-variant-numeric:tabular-nums;';
-  rows.forEach((r,i)=>{
+
+  // ── Group rows by COUNTRY_GROUPS, keep ungrouped rows separate ─────────────
+  const _grpRowsMap = {}; // groupKey → [rows]
+  const _ungrouped  = [];
+  rows.forEach(r => {
+    const gk = _CKEY_TO_GROUP[r.cKey];
+    if(gk){ (_grpRowsMap[gk]||(_grpRowsMap[gk]=[])).push(r); }
+    else   _ungrouped.push(r);
+  });
+
+  // Build group aggregate entries for groups that have ≥1 member in data
+  const _grpEntries = COUNTRY_GROUPS
+    .filter(g => _grpRowsMap[g.key])
+    .map(g => {
+      const mr = _grpRowsMap[g.key];
+      const s = fn => mr.reduce((a,r)=>a+fn(r),0);
+      const qTF=s(r=>r.qTotalFcst), qTD=s(r=>r.qTotalDem), bQ=s(r=>r.boQty);
+      return {
+        isGroup:true, cKey:g.key, label:g.label, memberRows:mr,
+        boQty:bQ, boVal:s(r=>r.boVal),
+        mFcst:{[m0]:s(r=>r.mFcst[m0]),[m1]:s(r=>r.mFcst[m1]),[m2]:s(r=>r.mFcst[m2])},
+        mDem: {[m0]:s(r=>r.mDem[m0]), [m1]:s(r=>r.mDem[m1]), [m2]:s(r=>r.mDem[m2])},
+        qTotalFcst:qTF, qTotalDem:qTD,
+      };
+    });
+
+  // Merge + sort by boVal descending (groups treated as single entries)
+  const _allEntries = [
+    ..._grpEntries,
+    ..._ungrouped.map(r=>({...r,isGroup:false})),
+  ].sort((a,b)=>b.boVal-a.boVal);
+
+  // Render helper — one data row (shared by both group header and country rows)
+  const _renderDataRow = (r, indentLabel, rowBg, clickHandler, extraTdStyle='') => {
     const boPct=boQtyTotal>0?r.boQty/boQtyTotal*100:0;
     const consPct=r.qTotalFcst>0?r.qTotalDem/r.qTotalFcst*100:null;
     const shipPct=_showShip&&r.qTotalFcst>0?(r.qTotalDem-r.boQty)/r.qTotalFcst*100:null;
     const shipSty=shipPct!==null?(shipPct>=100?'color:#28a745;font-weight:700':shipPct>=80?'color:#f0a500;font-weight:700':'color:#d9534f;font-weight:700'):'';
-    const isSelected=(typeof _selectedRegionKey!=='undefined')&&_selectedRegionKey===r.cKey;
-    const bg=isSelected?'background:#dbeafe;outline:2px solid #0056a3;outline-offset:-2px;':i%2===0?'':'background:#f7fafe;';
     const boPctSty=boPct>20?'color:#c0392b;font-weight:700':boPct>10?'color:#e07000;font-weight:700':'';
     const consSty=consPct!==null?(consPct>=100?'color:#28a745;font-weight:700':consPct>=80?'color:#f0a500;font-weight:700':'color:#d9534f;font-weight:700'):'';
-    html+=`<tr style="cursor:pointer;${bg}" onclick="selectCountryRow('${esc(r.cKey)}')">
-      <td style="${td}white-space:nowrap">${r.flag} ${esc(r.cKey.length>20?r.cKey.substring(0,19)+'…':r.cKey)}</td>
-      <td style="${tdn}">${fmtV(r.boVal)}</td>
-      <td style="${tdn}">${fmtQ(r.boQty)}</td>
-      <td style="${tdn}">${fmtQ(r.mFcst[m0])}</td><td style="${tdn}">${fmtQ(r.mDem[m0])}</td>
-      <td style="${tdn}">${fmtQ(r.mFcst[m1])}</td><td style="${tdn}">${fmtQ(r.mDem[m1])}</td>
-      <td style="${tdn}">${fmtQ(r.mFcst[m2])}</td><td style="${tdn}">${fmtQ(r.mDem[m2])}</td>
-      <td style="${tdn}font-weight:600;color:#0056a3">${fmtQ(r.qTotalFcst)}</td>
-      <td style="${tdn}font-weight:600;color:#1a5c35">${fmtQ(r.qTotalDem)}</td>
-      <td style="${tdn+boPctSty}">${fmtPct(boPct)}</td>
-      <td style="${tdn+consSty}">${fmtPct(consPct)}</td>
-      ${_showShip?`<td style="${tdn+shipSty}">${fmtPct(shipPct)}</td>`:''}
+    const tdx=td+extraTdStyle;
+    const tdxN=tdn+extraTdStyle;
+    return `<tr style="cursor:pointer;${rowBg}" onclick="${clickHandler}">
+      <td style="${tdx}white-space:nowrap">${indentLabel}</td>
+      <td style="${tdxN}">${fmtV(r.boVal)}</td>
+      <td style="${tdxN}">${fmtQ(r.boQty)}</td>
+      <td style="${tdxN}">${fmtQ(r.mFcst[m0])}</td><td style="${tdxN}">${fmtQ(r.mDem[m0])}</td>
+      <td style="${tdxN}">${fmtQ(r.mFcst[m1])}</td><td style="${tdxN}">${fmtQ(r.mDem[m1])}</td>
+      <td style="${tdxN}">${fmtQ(r.mFcst[m2])}</td><td style="${tdxN}">${fmtQ(r.mDem[m2])}</td>
+      <td style="${tdxN}font-weight:600;color:#0056a3">${fmtQ(r.qTotalFcst)}</td>
+      <td style="${tdxN}font-weight:600;color:#1a5c35">${fmtQ(r.qTotalDem)}</td>
+      <td style="${tdxN+boPctSty}">${fmtPct(boPct)}</td>
+      <td style="${tdxN+consSty}">${fmtPct(consPct)}</td>
+      ${_showShip?`<td style="${tdxN+shipSty}">${fmtPct(shipPct)}</td>`:''}
     </tr>`;
+  };
+
+  let rowIdx=0;
+  _allEntries.forEach(entry => {
+    if(entry.isGroup){
+      const g = entry;
+      const isCollapsed = _collapsedGroups.has(g.cKey);
+      const isSelected  = _selectedRegionKey===g.cKey;
+      const grpBg = isSelected
+        ? 'background:#dbeafe;outline:2px solid #0056a3;outline-offset:-2px;'
+        : 'background:#e8f0fc;';
+      const chevron = isCollapsed ? '▶' : '▼';
+      const toggleBtn = `<span onclick="toggleCountryGroup('${esc(g.cKey)}',event)" style="margin-right:5px;font-size:9px;opacity:.7;cursor:pointer">${chevron}</span>`;
+      const labelHtml = `${toggleBtn}${esc(g.label)}`;
+      html += _renderDataRow(g, labelHtml, grpBg, `selectCountryRow('${esc(g.cKey)}')`, 'font-weight:700;font-size:11px;');
+
+      if(!isCollapsed){
+        g.memberRows.forEach((r,mi)=>{
+          const isSelMem = _selectedRegionKey===r.cKey;
+          const memBg = isSelMem
+            ? 'background:#dbeafe;outline:2px solid #0056a3;outline-offset:-2px;'
+            : mi%2===0?'background:#f7fafe;':'';
+          const memberLabel = `&nbsp;&nbsp;&nbsp;${r.flag} ${esc(r.cKey.length>18?r.cKey.substring(0,17)+'…':r.cKey)}`;
+          html += _renderDataRow(r, memberLabel, memBg, `selectCountryRow('${esc(r.cKey)}')`);
+        });
+      }
+      rowIdx++;
+    } else {
+      const r = entry;
+      const isSelected = _selectedRegionKey===r.cKey;
+      const bg = isSelected?'background:#dbeafe;outline:2px solid #0056a3;outline-offset:-2px;':rowIdx%2===0?'':'background:#f7fafe;';
+      const label = `${r.flag} ${esc(r.cKey.length>20?r.cKey.substring(0,19)+'…':r.cKey)}`;
+      html += _renderDataRow(r, label, bg, `selectCountryRow('${esc(r.cKey)}')`);
+      rowIdx++;
+    }
   });
 
   // ── WEU TOTAL row ──────────────────────────────────────────────────────────
@@ -1943,6 +2028,22 @@ const QUARTER_CFG = {
 };
 // Country table quarter selection
 let _countryTableQuarter = 'q4';
+// Country group definitions for WEU view
+const COUNTRY_GROUPS = [
+  { key:'FRANCE_GROUP',  label:'🇫🇷 France Group',  members:['FRANCE','REUNION','GUADELOUPE','MARTINIQUE','MAYOTTE','NEW CALEDONIA','SAINT MARTIN','ST. HELENA','FRENCH POLYNES'] },
+  { key:'ITALY_GROUP',   label:'🇮🇹 Italy Group',   members:['ITALY','SAN MARINO'] },
+  { key:'UKI_GROUP',     label:'🇬🇧 UKI Group',     members:['UNITED KINGDOM','IRELAND','FAROE ISLANDS','GIBRALTAR'] },
+  { key:'IBERIA_GROUP',  label:'🇪🇸 Iberia',        members:['SPAIN','PORTUGAL','CANARY ISLANDS'] },
+  { key:'ALPINE_GROUP',  label:'🏔 Alpine',          members:['AUSTRIA','SWITZERLAND','LIECHTENSTEIN'] },
+  { key:'BENELUX_GROUP', label:'🌷 Benelux',         members:['BELGIUM','NETHERLANDS','LUXEMBOURG'] },
+  { key:'NORDICS_GROUP', label:'🌊 Nordics',         members:['SWEDEN','FINLAND','NORWAY','DENMARK','ICELAND'] },
+];
+// Build fast lookup: country cKey → group key
+const _CKEY_TO_GROUP = {};
+COUNTRY_GROUPS.forEach(g => g.members.forEach(m => { _CKEY_TO_GROUP[m] = g.key; }));
+// Set of collapsed group keys (empty = all expanded)
+let _collapsedGroups = new Set();
+
 // Key of the currently-selected country/region row (null = show default CEMA in right chart)
 let _selectedRegionKey = null;
 
@@ -1965,6 +2066,16 @@ function selectCountryRow(key){
   buildCountryCards(qv, mpgF, (typeof cfnSelectedSet!=='undefined'&&cfnSelectedSet.length>0)?cfnSelectedSet:[]);
   buildFcstDemandCharts();
   _applyKPIRegion(_selectedRegionKey);
+  _renderRegionTop10BO(_selectedRegionKey);
+}
+
+function toggleCountryGroup(key, evt){
+  if(evt) evt.stopPropagation();
+  if(_collapsedGroups.has(key)) _collapsedGroups.delete(key);
+  else _collapsedGroups.add(key);
+  const qv  = (document.getElementById('global-cfn')||{value:''}).value.trim().toLowerCase();
+  const mpgF= (document.getElementById('global-mpg')||{value:''}).value;
+  buildCountryCards(qv, mpgF, (typeof cfnSelectedSet!=='undefined'&&cfnSelectedSet.length>0)?cfnSelectedSet:[]);
 }
 // Country table lag selection (lag0 / lag1 / lag2)
 let _countryTableLag = 'lag0';
@@ -2359,12 +2470,79 @@ function buildTopBO(){
     <td class="num">${fmtImpact(r.BO_Impact_2wk)}</td>
   </tr>`).join('');
 }
+function _renderRegionTop10BO(key){
+  const container = document.getElementById('region-top10-bo');
+  const tbody     = document.getElementById('region-top10-body');
+  const nameEl    = document.getElementById('region-top10-name');
+  if(!container||!tbody) return;
+  if(!key){ container.style.display='none'; return; }
+
+  // Aggregate cfnQty / cfnVal — support individual country or group key
+  const grp = (typeof COUNTRY_GROUPS!=='undefined') && COUNTRY_GROUPS.find(g=>g.key===key);
+  let cfnQty={}, cfnVal={};
+  if(grp){
+    grp.members.forEach(m=>{
+      const cm=(typeof COUNTRY_BO_MAP!=='undefined')&&COUNTRY_BO_MAP[m];
+      if(!cm) return;
+      Object.entries(cm.cfnQty||{}).forEach(([c,q])=>{ cfnQty[c]=(cfnQty[c]||0)+q; });
+      Object.entries(cm.cfnVal||{}).forEach(([c,v])=>{ cfnVal[c]=(cfnVal[c]||0)+v; });
+    });
+  } else {
+    const cm=(typeof COUNTRY_BO_MAP!=='undefined')&&COUNTRY_BO_MAP[key];
+    if(cm){ cfnQty=cm.cfnQty||{}; cfnVal=cm.cfnVal||{}; }
+  }
+
+  const items=Object.keys(cfnVal)
+    .map(c=>({cfn:c, qty:cfnQty[c]||0, val:cfnVal[c]||0}))
+    .filter(x=>x.val>0)
+    .sort((a,b)=>b.val-a.val)
+    .slice(0,10);
+
+  if(items.length===0){ container.style.display='none'; return; }
+
+  if(nameEl) nameEl.textContent = grp ? grp.label.replace(/^[^\w]+/,'') : key;
+
+  const _fmtV=v=>v>=1e6?'$'+(v/1e6).toFixed(2)+'M':'$'+Math.round(v).toLocaleString();
+  tbody.innerHTML=items.map(r=>{
+    const mpg=(typeof CFN_MPG_MAP!=='undefined'&&CFN_MPG_MAP[r.cfn])||'';
+    const rorRow=(typeof ROR_DATA!=='undefined')&&ROR_DATA.find(d=>d.CFN===r.cfn);
+    const desc=rorRow?(rorRow.Description||''):'';
+    const descShort=desc.length>35?desc.substring(0,34)+'…':desc;
+    return `<tr>
+      <td><span class="tag tag-blue" style="font-size:9px">${esc(mpg.replace(/^[A-Z0-9]+ - /,'').substring(0,16))}</span></td>
+      <td><b>${esc(r.cfn)}</b></td>
+      <td title="${esc(desc)}">${esc(descShort)}</td>
+      <td class="num" style="color:#c0392b;font-weight:600">${Math.round(r.qty).toLocaleString()}</td>
+      <td class="num" style="color:#c0392b">${_fmtV(r.val)}</td>
+    </tr>`;
+  }).join('');
+  container.style.display='block';
+}
+
 function _applyKPIRegion(key){
   const fmtMoney=v=>v>=1e6?'$'+fmt(v/1e6,2)+'M':'$'+fmt(v,0);
   const bar=document.getElementById('kpi-region-bar');
-  // 'WEU' maps to OO_TOTALS (the main WEU BO file IS the WEU total)
-  const cats = (key && key!=='WEU') ? COUNTRY_OO_MAP[key] : null;
-  const src  = cats || OO_TOTALS;
+  let cats=null;
+  if(key && key!=='WEU'){
+    const grp=(typeof COUNTRY_GROUPS!=='undefined')&&COUNTRY_GROUPS.find(g=>g.key===key);
+    if(grp){
+      // Aggregate OO categories from all group members that have data
+      const blank=()=>({qty:0,val:0});
+      const agg={total:blank(),bo:blank(),pastdue:blank(),future:blank(),shipped:blank(),dc:blank(),current:blank()};
+      let hasAny=false;
+      grp.members.forEach(m=>{
+        const mc=(typeof COUNTRY_OO_MAP!=='undefined')&&COUNTRY_OO_MAP[m];
+        if(!mc) return; hasAny=true;
+        Object.keys(agg).forEach(k=>{
+          agg[k].qty+=(mc[k]||blank()).qty;
+          agg[k].val+=(mc[k]||blank()).val;
+        });
+      });
+      if(hasAny) cats=agg;
+    } else {
+      cats=(typeof COUNTRY_OO_MAP!=='undefined')?COUNTRY_OO_MAP[key]:null;
+    }
+  }
   OV_DEFS.forEach(d=>{
     const t = cats ? (cats[d.key]||{qty:0,val:0}) : (OO_TOTALS[d.key]||{qty:0,val:0});
     const ve=document.getElementById(d.valId); if(ve) ve.textContent=fmtMoney(t.val);
@@ -2372,7 +2550,9 @@ function _applyKPIRegion(key){
   });
   if(bar){
     if(key){
-      const lbl = (cats||key==='WEU') ? '📍 '+key : '📍 '+key+' (load BO file for this region to see data)';
+      const grp=(typeof COUNTRY_GROUPS!=='undefined')&&COUNTRY_GROUPS.find(g=>g.key===key);
+      const displayName = grp ? grp.label.replace(/^[^\w]+/,'') : key;
+      const lbl = (cats||key==='WEU') ? '📍 '+displayName : '📍 '+displayName+' (load BO file for this region to see data)';
       bar.textContent=lbl; bar.style.display='block';
     } else {
       bar.style.display='none';
