@@ -591,13 +591,11 @@ body.dark-mode .country-cards-empty{color:#5a7a9a;}
           <div class="fcst-region-label" style="color:#1b3f6e">🌍 WEU</div>
           <div class="chart-wrap"><canvas id="weuFcstChart"></canvas></div>
           <div class="chart-wrap-xs"><canvas id="weuTotalChart"></canvas></div>
-          <div id="weu-ship-pct-bar" style="display:none;font-size:11px;font-weight:700;background:#fef08a;color:#78350f;padding:3px 10px;border-radius:4px;margin-top:4px;text-align:center;"></div>
         </div>
         <div>
           <div class="fcst-region-label" id="fcst-cema-label" style="color:#1a5c35">🌿 CEMA</div>
           <div class="chart-wrap"><canvas id="cemaFcstChart"></canvas></div>
           <div class="chart-wrap-xs"><canvas id="cemaTotalChart"></canvas></div>
-          <div id="cema-ship-pct-bar" style="display:none;font-size:11px;font-weight:700;background:#fef08a;color:#78350f;padding:3px 10px;border-radius:4px;margin-top:4px;text-align:center;"></div>
         </div>
       </div>
     </div>
@@ -1463,9 +1461,7 @@ function _buildCountryGlobalView(grid, selUpper, q, mpgF, hasFilter, lag){
     const q4Dem=r.mDem[gm0]+r.mDem[gm1]+r.mDem[gm2];
     const boPct=boQtyTotal>0?r.boQty/boQtyTotal*100:0;
     const consPct=q4Fcst>0?q4Dem/q4Fcst*100:null;
-    const _gCurFcst=_gShipMthKey?r.mFcst[_gShipMthKey]:0;
-    const _gCurDem =_gShipMthKey?r.mDem[_gShipMthKey]:0;
-    const shipPctG=_gShowShip&&_gCurFcst>0?(_gCurDem-r.boQty)/_gCurFcst*100:null;
+    const shipPctG=_gShowShip&&q4Fcst>0?(q4Dem-r.boQty)/q4Fcst*100:null;
     const shipStyG=shipPctG!==null?(shipPctG>=100?'color:#28a745;font-weight:700':shipPctG>=80?'color:#f0a500;font-weight:700':'color:#d9534f;font-weight:700'):'';
     const isSelectedG=(typeof _selectedRegionKey!=='undefined')&&_selectedRegionKey===r.cKey;
     const bg=isSelectedG?'background:#dbeafe;outline:2px solid #0056a3;outline-offset:-2px;':i%2===0?'':'background:#f7fafe;';
@@ -1493,9 +1489,7 @@ function _buildCountryGlobalView(grid, selUpper, q, mpgF, hasFilter, lag){
   const totQ4Dem=rows.filter(r=>r.hasFcst).reduce((s,r)=>s+r.mDem[gm0]+r.mDem[gm1]+r.mDem[gm2],0);
   const totConsPct=totQ4Fcst>0?totQ4Dem/totQ4Fcst*100:null;
   const totConsSty=totConsPct!==null?(totConsPct>=100?'color:#28a745':totConsPct>=80?'color:#f0a500':'color:#d9534f'):'';
-  const totCurFcst=_gShowShip&&_gShipMthKey?rows.filter(r=>r.hasFcst&&r.hasMonthBucket).reduce((s,r)=>s+r.mFcst[_gShipMthKey],0):0;
-  const totCurDem =_gShowShip&&_gShipMthKey?rows.filter(r=>r.hasFcst&&r.hasMonthBucket).reduce((s,r)=>s+r.mDem[_gShipMthKey],0):0;
-  const totShipPctG=_gShowShip&&totCurFcst>0?(totCurDem-totBoQty)/totCurFcst*100:null;
+  const totShipPctG=_gShowShip&&totQ4Fcst>0?(totQ4Dem-totBoQty)/totQ4Fcst*100:null;
   const totShipStyG=totShipPctG!==null?(totShipPctG>=100?'color:#28a745':totShipPctG>=80?'color:#f0a500':'color:#d9534f'):'';
   const trs='padding:5px 6px;white-space:nowrap;border-top:2px solid #003366;font-weight:700;font-size:11px;background:#e8f0fc;';
   const trsN=trs+'text-align:right;font-variant-numeric:tabular-nums;';
@@ -1627,7 +1621,7 @@ function buildCountryCards(q, mpgF, exactCFNs){
   rows.forEach((r,i)=>{
     const boPct=boQtyTotal>0?r.boQty/boQtyTotal*100:0;
     const consPct=r.qTotalFcst>0?r.qTotalDem/r.qTotalFcst*100:null;
-    const shipPct=_showShip&&_shipMthKey&&r.mFcst[_shipMthKey]>0?(r.mDem[_shipMthKey]-r.boQty)/r.mFcst[_shipMthKey]*100:null;
+    const shipPct=_showShip&&r.qTotalFcst>0?(r.qTotalDem-r.boQty)/r.qTotalFcst*100:null;
     const shipSty=shipPct!==null?(shipPct>=100?'color:#28a745;font-weight:700':shipPct>=80?'color:#f0a500;font-weight:700':'color:#d9534f;font-weight:700'):'';
     const isSelected=(typeof _selectedRegionKey!=='undefined')&&_selectedRegionKey===r.cKey;
     const bg=isSelected?'background:#dbeafe;outline:2px solid #0056a3;outline-offset:-2px;':i%2===0?'':'background:#f7fafe;';
@@ -1660,11 +1654,9 @@ function buildCountryCards(q, mpgF, exactCFNs){
     m2Dem:    acc.m2Dem    + r.mDem[m2],
     qFcst:    acc.qFcst    + r.qTotalFcst,
     qDem:     acc.qDem     + r.qTotalDem,
-    curFcst:  acc.curFcst  + (_shipMthKey?r.mFcst[_shipMthKey]:0),
-    curDem:   acc.curDem   + (_shipMthKey?r.mDem[_shipMthKey]:0),
-  }), {boVal:0,boQty:0,m0Fcst:0,m0Dem:0,m1Fcst:0,m1Dem:0,m2Fcst:0,m2Dem:0,qFcst:0,qDem:0,curFcst:0,curDem:0});
+  }), {boVal:0,boQty:0,m0Fcst:0,m0Dem:0,m1Fcst:0,m1Dem:0,m2Fcst:0,m2Dem:0,qFcst:0,qDem:0});
   const totConsPct = tot.qFcst>0 ? tot.qDem/tot.qFcst*100 : null;
-  const totShipPct = _showShip&&tot.curFcst>0?(tot.curDem-boQtyTotal)/tot.curFcst*100:null;
+  const totShipPct = _showShip&&tot.qFcst>0?(tot.qDem-boQtyTotal)/tot.qFcst*100:null;
   const totShipSty = totShipPct!==null?(totShipPct>=100?'color:#28a745':totShipPct>=80?'color:#f0a500':'color:#d9534f'):'';
   const totConsSty = totConsPct!==null?(totConsPct>=100?'color:#28a745':totConsPct>=80?'color:#f0a500':'color:#d9534f'):'';
   const trs='padding:5px 6px;white-space:nowrap;border-top:2px solid #003366;font-weight:700;font-size:11px;background:#e8f0fc;';
@@ -1816,27 +1808,23 @@ function _buildFcstDemandCharts(q, mpgF, exactCFNs){
   const _lagLabel = _activeLag==='lag2' ? 'Fcst Lag 2' : _activeLag==='lag1' ? 'Fcst Lag 1' : 'Fcst Lag 0';
   const _lagColor = _activeLag==='lag2' ? C_L2 : _activeLag==='lag1' ? C_L1 : C_L0;
 
-  // SHIP% for current month — only shown when current calendar month is inside selected quarter
-  // Formula: (Demand - BO_QTY) / Forecast × 100  (matches FCST tab per-CFN formula)
-  const _MKEYS=['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
+  // SHIP% — only shown when current calendar month is within selected quarter
+  // Formula: (quarter Demand - BO_QTY) / quarter Forecast × 100
   const _QCALM={q1:[4,5,6],q2:[7,8,9],q3:[10,11,0],q4:[1,2,3]};
   const _nowM=new Date().getMonth(); // 0=Jan..11=Dec
   const _qCMs=_QCALM[_countryTableQuarter||'q4']||[];
   const _qHasCur=_qCMs.includes(_nowM);
-  const _curQIdx=_qCMs.indexOf(_nowM); // position within the 3-month quarter (0,1,2) or -1
   let wShipT=null, cShipT=null;
-  if(_qHasCur && _curQIdx>=0){
+  if(_qHasCur){
     const wBoQty=(OO_TOTALS.bo||{qty:0}).qty;
-    const wFcur=wFcstActive[_curQIdx];
-    wShipT=wFcur>0?Math.round((wD[_curQIdx]-wBoQty)/wFcur*100*10)/10:null;
+    wShipT=wFcstActiveT>0?Math.round((wDT-wBoQty)/wFcstActiveT*100*10)/10:null;
     const selK=_selectedRegionKey;
     let cBoQty=0;
     if(selK==='WEU') cBoQty=wBoQty;
     else if(selK && COUNTRY_OO_MAP[selK]) cBoQty=(COUNTRY_OO_MAP[selK].bo||{qty:0}).qty;
     else if(!selK) cBoQty=COUNTRY_OO_MAP['CEMA']?(COUNTRY_OO_MAP['CEMA'].bo||{qty:0}).qty
                                                  :Object.values(CEMA_BO_QTY_MAP).reduce((s,v)=>s+(v||0),0);
-    const cFcur=cFcstActive[_curQIdx];
-    cShipT=cFcur>0?Math.round((cD[_curQIdx]-cBoQty)/cFcur*100*10)/10:null;
+    cShipT=cFcstActiveT>0?Math.round((cDT-cBoQty)/cFcstActiveT*100*10)/10:null;
   }
 
   // Axis / grid / legend colors
@@ -1890,12 +1878,6 @@ function _buildFcstDemandCharts(q, mpgF, exactCFNs){
     if(_selectedRegionKey){ _cemLblEl.textContent='📍 '+_selectedRegionKey; _cemLblEl.style.color='#0056a3'; }
     else                  { _cemLblEl.textContent='🌿 CEMA';                _cemLblEl.style.color='#1a5c35'; }
   }
-  // Update SHIP% yellow bars below total charts
-  const _wSpEl=document.getElementById('weu-ship-pct-bar');
-  if(_wSpEl){ if(wShipT!==null){_wSpEl.textContent='⚡ SHIP: '+wShipT+'%';_wSpEl.style.display='block';}else{_wSpEl.style.display='none';} }
-  const _cSpEl=document.getElementById('cema-ship-pct-bar');
-  if(_cSpEl){ if(cShipT!==null){_cSpEl.textContent='⚡ SHIP: '+cShipT+'%';_cSpEl.style.display='block';}else{_cSpEl.style.display='none';} }
-
   // WEU monthly chart — Lag2 / Lag1 / Lag0 / Demand + CONS% line
   weuFcstCI=new Chart(document.getElementById('weuFcstChart'),{
     data:{labels:qLabels,datasets:[
@@ -1909,9 +1891,11 @@ function _buildFcstDemandCharts(q, mpgF, exactCFNs){
   });
 
   // WEU total compact bar chart — Lag2 / Lag1 / Lag0 / Demand
+  const _wTotLbl=['Total'+(wConsT!==null?' · CONS '+wConsT+'%':'')];
+  if(wShipT!==null) _wTotLbl.push('SHIP '+wShipT+'%');
   weuTotalCI=new Chart(document.getElementById('weuTotalChart'),{
     type:'bar',
-    data:{labels:['Total'+(wConsT!==null?' · CONS '+wConsT+'%':'')],datasets:[
+    data:{labels:[_wTotLbl],datasets:[
       {label:'Fcst Lag 2',data:[wL2T],backgroundColor:C_L2.bg,borderColor:C_L2.bd,borderWidth:1,borderRadius:3,barThickness:10},
       {label:'Fcst Lag 1',data:[wL1T],backgroundColor:C_L1.bg,borderColor:C_L1.bd,borderWidth:1,borderRadius:3,barThickness:10},
       {label:'Fcst Lag 0',data:[wL0T],backgroundColor:C_L0.bg,borderColor:C_L0.bd,borderWidth:1,borderRadius:3,barThickness:10},
@@ -1933,9 +1917,11 @@ function _buildFcstDemandCharts(q, mpgF, exactCFNs){
   });
 
   // CEMA total compact bar chart — Lag2 / Lag1 / Lag0 / Demand
+  const _cTotLbl=['Total'+(cConsT!==null?' · CONS '+cConsT+'%':'')];
+  if(cShipT!==null) _cTotLbl.push('SHIP '+cShipT+'%');
   cemaTotalCI=new Chart(document.getElementById('cemaTotalChart'),{
     type:'bar',
-    data:{labels:['Total'+(cConsT!==null?' · CONS '+cConsT+'%':'')],datasets:[
+    data:{labels:[_cTotLbl],datasets:[
       {label:'Fcst Lag 2',data:[cL2T],backgroundColor:C_L2.bg, borderColor:C_L2.bd, borderWidth:1,borderRadius:3,barThickness:10},
       {label:'Fcst Lag 1',data:[cL1T],backgroundColor:C_L1.bg, borderColor:C_L1.bd, borderWidth:1,borderRadius:3,barThickness:10},
       {label:'Fcst Lag 0',data:[cL0T],backgroundColor:C_L0.bg, borderColor:C_L0.bd, borderWidth:1,borderRadius:3,barThickness:10},
@@ -2891,18 +2877,19 @@ function renderSTO(){
 function getFCSTCols(){
   const lagLabel=fcstActiveLag==='L0'?'Lag 0':fcstActiveLag==='L1'?'Lag 1':'Lag 2';
   const wFKey='w'+fcstActiveLag, cFKey='c'+fcstActiveLag;
+  // Column order: CFN, MPG, WEU_BO | WEU: Fcst, Demand, Cons%, Ship% | CEMA: Fcst, Demand, Cons%, Ship%
   return [
-    {key:'cfn',    label:'CFN',                       bg:'#003366'},
-    {key:'mpg',    label:'MPG',                       bg:'#003366'},
-    {key:'wBo',    label:'WEU BO (QTY)',              bg:'#1b3f6e'},
-    {key:wFKey,    label:'WEU Fcst '+lagLabel,        bg:'#1b3f6e'},
-    {key:'wD',     label:'WEU Demand',                bg:'#1b3f6e'},
-    {key:cFKey,    label:'CEMA Fcst '+lagLabel,       bg:'#1a5c35'},
-    {key:'cD',     label:'CEMA Demand',               bg:'#1a5c35'},
-    {key:'wCons',  label:'WEU CONS%',                 bg:'#4a2070'},
-    {key:'cCons',  label:'CEMA CONS%',                bg:'#4a2070'},
-    {key:'wShip',  label:'WEU SHIP%',                 bg:'#4a2070'},
-    {key:'cShip',  label:'CEMA SHIP%',                bg:'#4a2070'},
+    {key:'cfn',    label:'CFN',               bg:'#003366', span:'hdr'},
+    {key:'mpg',    label:'MPG',               bg:'#003366', span:'hdr'},
+    {key:'wBo',    label:'WEU BO (QTY)',      bg:'#1b3f6e', span:'hdr'},
+    {key:wFKey,    label:'Fcst '+lagLabel,    bg:'#1b3f6e', group:'weu'},
+    {key:'wD',     label:'Demand',            bg:'#1b3f6e', group:'weu'},
+    {key:'wCons',  label:'CONS%',             bg:'#4a2070', group:'weu'},
+    {key:'wShip',  label:'SHIP%',             bg:'#4a2070', group:'weu'},
+    {key:cFKey,    label:'Fcst '+lagLabel,    bg:'#1a5c35', group:'cema'},
+    {key:'cD',     label:'Demand',            bg:'#1a5c35', group:'cema'},
+    {key:'cCons',  label:'CONS%',             bg:'#4a2070', group:'cema'},
+    {key:'cShip',  label:'SHIP%',             bg:'#4a2070', group:'cema'},
   ];
 }
 let fcstFiltered=[], fcstPage=1, fcstActiveMPG='', fcstActiveLag='L0', fcstSortCol=null, fcstSortDir=1;
@@ -3022,16 +3009,27 @@ function _renderFCSTBody(){
     return fcstSortDir*(typeof av==='string'?av.localeCompare(bv):av-bv);
   }):augmented;
 
-  // Render sortable thead using current column set
+  // Two-row header: Row 1 = WEU / CEMA group labels; Row 2 = individual column headers
   const thead=document.getElementById('fcst-thead');
-  if(thead) thead.innerHTML='<tr>'+cols.map(c=>{
-    const isActive=fcstSortCol===c.key;
-    const ind=isActive?(fcstSortDir>0?' ▲':' ▼'):'';
-    const bg=isActive?c.bg+'dd':c.bg;
-    return `<th style="background:${bg};cursor:pointer;user-select:none" onclick="sortFCST('${c.key}')" title="Sort by ${c.label}">${c.label}${ind}</th>`;
-  }).join('')+'</tr>';
+  const _th=(key,lbl,bg,extra='')=>{const ia=fcstSortCol===key;const b=ia?bg+'dd':bg;const ind=ia?(fcstSortDir>0?' ▲':' ▼'):'';return `<th style="background:${b};cursor:pointer;user-select:none;${extra}" onclick="sortFCST('${key}')" title="Sort by ${lbl}">${lbl}${ind}</th>`;};
+  if(thead) thead.innerHTML=`<tr>
+    ${_th('cfn', 'CFN',         '#003366','padding:4px 6px;white-space:nowrap;')}
+    ${_th('mpg', 'MPG',         '#003366','padding:4px 6px;white-space:nowrap;')}
+    ${_th('wBo', 'WEU BO (QTY)','#1b3f6e','padding:4px 6px;white-space:nowrap;')}
+    <th colspan="4" style="background:#1b3f6e;text-align:center;padding:4px 6px;border-bottom:1px solid rgba(255,255,255,.25)">WEU</th>
+    <th colspan="4" style="background:#1a5c35;text-align:center;padding:4px 6px;border-bottom:1px solid rgba(255,255,255,.25)">CEMA</th>
+  </tr><tr>
+    ${_th(wFKey,  cols[3].label,'#1b3f6e','padding:3px 6px;')}
+    ${_th('wD',   'Demand',     '#1b3f6e','padding:3px 6px;')}
+    ${_th('wCons','CONS%',      '#4a2070','padding:3px 6px;')}
+    ${_th('wShip','SHIP%',      '#4a2070','padding:3px 6px;')}
+    ${_th(cFKey,  cols[7].label,'#1a5c35','padding:3px 6px;')}
+    ${_th('cD',   'Demand',     '#1a5c35','padding:3px 6px;')}
+    ${_th('cCons','CONS%',      '#4a2070','padding:3px 6px;')}
+    ${_th('cShip','SHIP%',      '#4a2070','padding:3px 6px;')}
+  </tr>`;
 
-  // Render tbody — columns match getFCSTCols() order exactly
+  // Render tbody — column order: CFN, MPG, WEU_BO | WEU: Fcst, Demand, Cons%, Ship% | CEMA: Fcst, Demand, Cons%, Ship%
   const fmtN=v=>v?fmt(v):'<span style="color:#ccc">—</span>';
   const fmtP=v=>v===null?'<span style="color:#aaa">—</span>'
     :`<span style="color:${v>=100?'#d9534f':v>=50?'#f0a500':'#28a745'};font-weight:600">${Math.round(v)}%</span>`;
@@ -3042,12 +3040,10 @@ function _renderFCSTBody(){
     <td><b>${esc(r.cfn)}</b></td>
     <td><span class="tag tag-blue" style="font-size:9px;white-space:nowrap">${esc(r.mpg||'—')}</span></td>
     <td class="num">${fmtN(r.wBo)}</td>
-    <td class="num">${fmtN(r[wFKey])}</td>
-    <td class="num">${fmtN(r.wD)}</td>
-    <td class="num">${fmtN(r[cFKey])}</td>
-    <td class="num">${fmtN(r.cD)}</td>
-    <td class="num">${fmtP(r.wCons)}</td><td class="num">${fmtP(r.cCons)}</td>
-    <td class="num">${fmtP(r.wShip)}</td><td class="num">${fmtP(r.cShip)}</td>
+    <td class="num">${fmtN(r[wFKey])}</td><td class="num">${fmtN(r.wD)}</td>
+    <td class="num">${fmtP(r.wCons)}</td><td class="num">${fmtP(r.wShip)}</td>
+    <td class="num">${fmtN(r[cFKey])}</td><td class="num">${fmtN(r.cD)}</td>
+    <td class="num">${fmtP(r.cCons)}</td><td class="num">${fmtP(r.cShip)}</td>
   </tr>`).join('');
   renderPagination('fcst-pagination',fcstFiltered.length,fcstPage,p=>{fcstPage=p;_renderFCSTBody();});
 }
