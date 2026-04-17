@@ -5608,6 +5608,19 @@ function refreshRORWeeks(){
     wkMap[cfn][wkey]=(wkMap[cfn][wkey]||0)+(r.Qty||0);
     totMap[cfn]=(totMap[cfn]||0)+(r.Qty||0);
   });
+  // Rebuild WEEK_KEYS dynamically from all observed keys so future weeks are not dropped
+  const allWkKeys=new Set();
+  Object.values(wkMap).forEach(m=>Object.keys(m).forEach(k=>allWkKeys.add(k)));
+  WEEK_KEYS.length=0;
+  [...allWkKeys].sort().forEach(k=>WEEK_KEYS.push(k));
+  // Generate labels for any new keys: Monday of each ISO week as "Wk MM-DD"
+  const _wkMonLabel=k=>{
+    const m=k.match(/W(\d+)_(\d+)/); if(!m) return k;
+    const d=new Date(+m[1],0,4);
+    d.setDate(d.getDate()-(d.getDay()||7)+1+(+m[2]-1)*7);
+    return 'Wk '+(d.getMonth()+1).toString().padStart(2,'0')+'-'+d.getDate().toString().padStart(2,'0');
+  };
+  WEEK_KEYS.forEach(k=>{ if(!WEEK_LABELS[k]) WEEK_LABELS[k]=_wkMonLabel(k); });
   // Push into ROR_DATA
   ROR_DATA.forEach(r=>{
     const cfn=(r.CFN||'').trim().toUpperCase();
