@@ -839,6 +839,7 @@ body.dark-mode .country-cards-empty{color:#5a7a9a;}
 const PAGE_SIZE=100;
 const WEEK_KEYS=["W2026_11", "W2026_12", "W2026_13", "W2026_14", "W2026_15", "W2026_16", "W2026_17"]
 const WEEK_LABELS={"W2026_11": "Wk 03-09", "W2026_12": "Wk 03-16", "W2026_13": "Wk 03-23", "W2026_14": "Wk 03-30", "W2026_15": "Wk 04-06", "W2026_16": "Wk 04-13", "W2026_17": "Wk 04-20"};
+const INV_NL_PRDLOC=new Set(); // CFNs with VIZ_APO_LOC_PROD='PRDLOC' in SAP_INV_NETHERLANDS
 // Generate ROR week column headers dynamically
 function initRORWeekHeaders(){
   const ths=document.getElementById('ror-week-headers');
@@ -2892,24 +2893,26 @@ let rorFiltered=[...ROR_DATA],rorPage=1,rorSortCol='BO_Value',rorSortDir=-1;
 
 // Fixed column definitions for the sortable ROR thead
 const ROR_COLS=[
-  {key:'MPG',           label:'MPG'},
-  {key:'CFN',           label:'CFN'},
-  {key:'Description',   label:'Description'},
-  {key:'BO_QTY',        label:'BO QTY'},
-  {key:'BO_Value',      label:'BO Value ($)'},
-  {key:'PastDue_QTY',   label:'Past Due'},
-  {key:'FutureDue_QTY', label:'Future Due'},
-  {key:'OOB_QTY',       label:'OOB'},
-  {key:'Stock_EA',      label:'Stock EA'},
-  {key:'WoC',           label:'WoC (wks)'},
-  {key:'Shipments_2wk', label:'2wk Shipments'},
-  {key:'Weekly_Demand', label:'Wkly Demand'},
-  {key:'BO_Dev_2wk',    label:'2-Wk Dev %'},
-  {key:'BO_Impact_2wk', label:'Expected $ Impact'},
-  {key:'DC_Heerlen',    label:'DC Heerlen'},
-  {key:'DC_Rolo',       label:'DC Rolo'},
-  {key:'DC_Alcala',     label:'DC Alcala'},
-  {key:'DC_Kits',       label:'DC Kits'},
+  {key:'MPG',               label:'MPG'},
+  {key:'CFN',               label:'CFN'},
+  {key:'Description',       label:'CFN Description'},
+  {key:'Heerlen_Allocation',label:'HEERLEN\nALLOCATION'},
+  {key:'BO_QTY',            label:'BO QTY'},
+  {key:'BO_Value',          label:'BO Value ($)'},
+  {key:'PastDue_QTY',       label:'Past Due'},
+  {key:'FutureDue_QTY',     label:'Future Due'},
+  {key:'OOB_QTY',           label:'OOB'},
+  {key:'Stock_EA',          label:'Exp. Stock\n(EA)'},
+  {key:'Shipments_2wk',     label:'Exp. 2wk\nShipments'},
+  {key:'Weekly_Demand',     label:'Avg Wkly\nDemand'},
+  {key:'WoC',               label:'WoC\n(wks)'},
+  {key:'BO_Dev_2wk',        label:'Exp. 2-WKS\nBO* (%)'},
+  {key:'BO_Impact_2wk',     label:'Exp.\n$ Impact'},
+  // Q4_FCST_CONS rendered separately (computed on-the-fly)
+  {key:'DC_Heerlen',        label:'HEERLEN (NL)\nDC 1680'},
+  {key:'DC_Rolo',           label:'ROLO (IT)\nDC 1335'},
+  {key:'DC_Alcala',         label:'ALCALA (ES)'},
+  {key:'DC_Kits',           label:'KITS (NL)'},
 ];
 
 function sortROR(col){
@@ -2969,44 +2972,85 @@ function renderROR(){
   const _wkMon=k=>{
     const m=k.match(/W(\d+)_(\d+)/); if(!m) return new Date(0);
     const yr=+m[1], wk=+m[2];
-    const d=new Date(yr,0,4); // Jan 4 is always in ISO week 1
+    const d=new Date(yr,0,4);
     d.setDate(d.getDate()-(d.getDay()||7)+1+(wk-1)*7);
     return d;
   };
   const _today=new Date(); _today.setHours(0,0,0,0);
   const _curMon=new Date(_today); _curMon.setDate(_today.getDate()-(_today.getDay()||7)+1);
-  // Show current week onwards (≥4 weeks look-ahead), only weeks with active shipments
   const activeWeekKeys=WEEK_KEYS.filter(k=>_wkMon(k)>=_curMon&&ROR_DATA.some(r=>r[k]!=null&&r[k]>0));
 
-  // Dynamic sortable thead
+  // Q4 Forecast Consumption %: sum(Q4 Demand) / sum(Q4 Fcst Lag0) × 100 per CFN
+  const _q4Map={};
+  if(typeof COUNTRY_FCST_MAP!=='undefined'&&typeof QUARTER_CFG!=='undefined'){
+    const _qt=typeof _countryTableQuarter!=='undefined'?_countryTableQuarter:'q4';
+    const qMths=(QUARTER_CFG[_qt]||QUARTER_CFG.q4).months;
+    Object.values(COUNTRY_FCST_MAP).forEach(cd=>{
+      qMths.forEach(m=>{
+        if(!cd[m]) return;
+        Object.entries(cd[m].cfnFcst||{}).forEach(([cfn,qty])=>{ if(!_q4Map[cfn]) _q4Map[cfn]={dem:0,fcst:0}; _q4Map[cfn].fcst+=(qty||0); });
+        Object.entries(cd[m].cfnDemand||{}).forEach(([cfn,qty])=>{ if(!_q4Map[cfn]) _q4Map[cfn]={dem:0,fcst:0}; _q4Map[cfn].dem+=(qty||0); });
+      });
+    });
+  }
+
+  // 2-row grouped thead
   const thead=document.getElementById('ror-thead');
   if(thead){
-    const fixedThs=ROR_COLS.map(c=>{
-      const isActive=rorSortCol===c.key;
-      const ind=isActive?(rorSortDir>0?' ▲':' ▼'):'';
-      const bg=isActive?'#0a4a8a':'#003366';
-      return `<th style="background:${bg};cursor:pointer;user-select:none" onclick="sortROR('${c.key}')" title="Sort by ${c.label}">${c.label}${ind}</th>`;
+    const N=activeWeekKeys.length;
+    const mdBg='background:#002244;color:#fff;font-size:11px;font-weight:700;text-align:center;position:sticky;top:0;z-index:4;padding:5px 6px;border:1px solid #224';
+    const weBg='background:#1a4080;color:#fff;font-size:11px;font-weight:700;text-align:center;position:sticky;top:0;z-index:4;padding:5px 6px;border:1px solid #224';
+    const emBg='background:#1a6a3a;color:#fff;font-size:11px;font-weight:700;text-align:center;position:sticky;top:0;z-index:4;padding:5px 6px;border:1px solid #224';
+    const itBg='background:#7a4000;color:#fff;font-size:11px;font-weight:700;text-align:center;position:sticky;top:0;z-index:4;padding:5px 6px;border:1px solid #224';
+    const row1=`<tr>
+      <th colspan="4" rowspan="2" style="${mdBg}">MASTER DATA</th>
+      <th colspan="12" style="${weBg}">WESTERN EUROPE (BO* = BO + PAST DUE)</th>
+      <th colspan="4" style="${emBg}">EMEA — STOCK (EA) available</th>
+      ${N>0?`<th colspan="${N}" style="${itBg}">EMEA IN-TRANSIT SHIPMENTS (WEEKS)</th>`:''}
+    </tr>`;
+    const lf=k=>`background:${rorSortCol===k?'#0a4a8a':'#003366'};color:#fff;cursor:pointer;user-select:none;padding:5px 6px;font-size:10px;white-space:pre-line;text-align:center;position:sticky;top:26px;z-index:3;border:1px solid #224`;
+    const dfBg=`background:#1a6a3a;color:#fff;cursor:pointer;user-select:none;padding:5px 6px;font-size:10px;white-space:pre-line;text-align:center;position:sticky;top:26px;z-index:3;border:1px solid #1a6a3a`;
+    const wfBg=`background:#5a3000;color:#fff;padding:5px 6px;font-size:10px;white-space:nowrap;text-align:center;position:sticky;top:26px;z-index:3`;
+    // WE leaf headers: ROR_COLS[4..14] (11 cols) + Q4 computed col
+    const weThs=ROR_COLS.slice(4,15).map(c=>{
+      const ind=rorSortCol===c.key?(rorSortDir>0?' ▲':' ▼'):'';
+      return `<th style="${lf(c.key)}" onclick="sortROR('${c.key}')">${c.label}${ind}</th>`;
     }).join('');
-    const weekThs=activeWeekKeys.map(k=>`<th style="background:#003366;color:#fff;padding:8px 10px;font-size:11px;white-space:nowrap;position:sticky;top:0;z-index:2">${WEEK_LABELS[k]||k}</th>`).join('');
-    thead.innerHTML=`<tr>${fixedThs}${weekThs}</tr>`;
+    const q4Th=`<th style="${lf('_q4fcst')}">Q4 FCST\nCons. %</th>`;
+    // DC leaf headers: ROR_COLS[15..18]
+    const dcThs=ROR_COLS.slice(15).map(c=>{
+      const ind=rorSortCol===c.key?(rorSortDir>0?' ▲':' ▼'):'';
+      return `<th style="${dfBg}" onclick="sortROR('${c.key}')">${c.label}${ind}</th>`;
+    }).join('');
+    const wkThs=activeWeekKeys.map(k=>`<th style="${wfBg}">${WEEK_LABELS[k]||k}</th>`).join('');
+    thead.innerHTML=row1+`<tr>${weThs}${q4Th}${dcThs}${wkThs}</tr>`;
   }
+
   // Tbody
-  document.getElementById('ror-body').innerHTML=rorFiltered.slice(s,s+PAGE_SIZE).map(r=>`<tr>
-    <td title="${esc(r.MPG||'')}" style="font-size:10px">${esc((r.MPG||'').replace(/^[A-Z0-9]+ - /,'').substring(0,16))}</td>
-    <td><b>${esc(r.CFN||'')}</b></td>
-    <td title="${esc(r.Description||'')}">${esc((r.Description||'').substring(0,24))}${(r.Description||'').length>24?'…':''}</td>
-    <td class="num" style="color:#c0392b;font-weight:600">${fmt(r.BO_QTY)}</td>
-    <td class="num" style="color:#c0392b">${fmtCur(r.BO_Value)}</td>
-    <td class="num">${fmt(r.PastDue_QTY)}</td><td class="num">${fmt(r.FutureDue_QTY)}</td><td class="num">${fmt(r.OOB_QTY)}</td>
-    <td class="num">${fmt(r.Stock_EA)}</td>
-    <td class="num">${r.WoC!==null&&r.WoC!==undefined?r.WoC:'<span style="color:#aaa">—</span>'}</td>
-    <td class="num" style="color:#1e7e34">${fmt(r.Shipments_2wk)}</td>
-    <td class="num">${fmt(r.Weekly_Demand)}</td>
-    <td class="num">${fmtPct(r.BO_Dev_2wk)}</td>
-    <td class="num">${fmtImpact(r.BO_Impact_2wk)}</td>
-    <td class="num">${fmt(r.DC_Heerlen)}</td><td class="num">${fmt(r.DC_Rolo)}</td><td class="num">${fmt(r.DC_Alcala)}</td><td class="num">${fmt(r.DC_Kits)}</td>
-    ${activeWeekKeys.map(k=>`<td class="num">${r[k]!=null?fmt(r[k]):'—'}</td>`).join('')}
-  </tr>`).join('');
+  document.getElementById('ror-body').innerHTML=rorFiltered.slice(s,s+PAGE_SIZE).map(r=>{
+    const cfn=(r.CFN||'').toUpperCase();
+    const q4e=_q4Map[cfn];
+    const q4Pct=q4e&&q4e.fcst>0?Math.round(q4e.dem/q4e.fcst*1000)/10:null;
+    const allocClr=r.Heerlen_Allocation==='PRDLOC'?'color:#1e7e34;font-weight:600':'color:#5a7a9a';
+    return `<tr>
+      <td title="${esc(r.MPG||'')}" style="font-size:10px">${esc((r.MPG||'').replace(/^[A-Z0-9]+ - /,'').substring(0,16))}</td>
+      <td><b>${esc(r.CFN||'')}</b></td>
+      <td title="${esc(r.Description||'')}">${esc((r.Description||'').substring(0,24))}${(r.Description||'').length>24?'…':''}</td>
+      <td style="font-size:10px;text-align:center;${allocClr}">${esc(r.Heerlen_Allocation||'—')}</td>
+      <td class="num" style="color:#c0392b;font-weight:600">${fmt(r.BO_QTY)}</td>
+      <td class="num" style="color:#c0392b">${fmtCur(r.BO_Value)}</td>
+      <td class="num">${fmt(r.PastDue_QTY)}</td><td class="num">${fmt(r.FutureDue_QTY)}</td><td class="num">${fmt(r.OOB_QTY)}</td>
+      <td class="num">${fmt(r.Stock_EA)}</td>
+      <td class="num" style="color:#1e7e34">${fmt(r.Shipments_2wk)}</td>
+      <td class="num">${fmt(r.Weekly_Demand)}</td>
+      <td class="num">${r.WoC!==null&&r.WoC!==undefined?r.WoC:'<span style="color:#aaa">—</span>'}</td>
+      <td class="num">${fmtPct(r.BO_Dev_2wk)}</td>
+      <td class="num">${fmtImpact(r.BO_Impact_2wk)}</td>
+      <td class="num" style="color:${q4Pct!==null?(q4Pct>=100?'#1e7e34':q4Pct>=80?'#d68910':'#c0392b'):'#aaa'}">${q4Pct!==null?q4Pct.toFixed(1)+'%':'—'}</td>
+      <td class="num">${fmt(r.DC_Heerlen)}</td><td class="num">${fmt(r.DC_Rolo)}</td><td class="num">${fmt(r.DC_Alcala)}</td><td class="num">${fmt(r.DC_Kits)}</td>
+      ${activeWeekKeys.map(k=>`<td class="num">${r[k]!=null?fmt(r[k]):'—'}</td>`).join('')}
+    </tr>`;
+  }).join('');
   renderPagination('ror-pagination',rorFiltered.length,rorPage,p=>{rorPage=p;renderROR();});
 }
 
@@ -3017,19 +3061,40 @@ async function exportRORToExcel(){
 
   try{
     // ── 1. Build headers and data ───────────────────────────────────────────
-    const headers=[...ROR_COLS.map(c=>c.label),...WEEK_KEYS.map(k=>WEEK_LABELS[k]||k)];
+    // ROR_COLS labels (flatten multiline), then Q4 FCST Cons. %, then week labels
+    const _flatLabel=s=>s.replace(/\n/g,' ');
+    const headers=[...ROR_COLS.map(c=>_flatLabel(c.label)),'Q4 FCST Cons. %',...WEEK_KEYS.map(k=>WEEK_LABELS[k]||k)];
     const numCols=headers.length;
-    const colWidths=[24,13,38,9,14,11,11,9,11,10,15,13,12,18,14,11,11,11,...WEEK_KEYS.map(()=>11)];
+    // colWidths: 4 MASTER + 11 WE + 1 Q4 + 4 DC + weeks
+    const colWidths=[24,13,38,13, 9,14,11,11,9,11,15,13,10,12,18,14, 11,11,11,11, ...WEEK_KEYS.map(()=>11)];
+
+    // Build Q4 map same as renderROR
+    const _xq4Map={};
+    if(typeof COUNTRY_FCST_MAP!=='undefined'&&typeof QUARTER_CFG!=='undefined'){
+      const _qt=typeof _countryTableQuarter!=='undefined'?_countryTableQuarter:'q4';
+      const qMths=(QUARTER_CFG[_qt]||QUARTER_CFG.q4).months;
+      Object.values(COUNTRY_FCST_MAP).forEach(cd=>{
+        qMths.forEach(m=>{
+          if(!cd[m]) return;
+          Object.entries(cd[m].cfnFcst||{}).forEach(([cfn,qty])=>{ if(!_xq4Map[cfn]) _xq4Map[cfn]={dem:0,fcst:0}; _xq4Map[cfn].fcst+=(qty||0); });
+          Object.entries(cd[m].cfnDemand||{}).forEach(([cfn,qty])=>{ if(!_xq4Map[cfn]) _xq4Map[cfn]={dem:0,fcst:0}; _xq4Map[cfn].dem+=(qty||0); });
+        });
+      });
+    }
 
     const dataRows=ROR_DATA.map(r=>{
-      const woc=r.Weekly_Demand>0?Math.round(r.Stock_EA/r.Weekly_Demand*10)/10:null;
+      const cfn=(r.CFN||'').toUpperCase();
+      const q4e=_xq4Map[cfn];
+      const q4Pct=q4e&&q4e.fcst>0?Math.round(q4e.dem/q4e.fcst*1000)/10:null;
       return[
-        r.MPG||'', r.CFN||'', r.Description||'',
+        r.MPG||'', r.CFN||'', r.Description||'', r.Heerlen_Allocation||'',
         r.BO_QTY??null, r.BO_Value??null,
         r.PastDue_QTY??null, r.FutureDue_QTY??null, r.OOB_QTY??null,
-        r.Stock_EA??null, woc,
+        r.Stock_EA??null,
         r.Shipments_2wk??null, r.Weekly_Demand??null,
+        r.WoC??null,
         r.BO_Dev_2wk??null, r.BO_Impact_2wk??null,
+        q4Pct??null,
         r.DC_Heerlen??null, r.DC_Rolo??null, r.DC_Alcala??null, r.DC_Kits??null,
         ...WEEK_KEYS.map(k=>r[k]??null)
       ];
@@ -5095,6 +5160,9 @@ function processInvFile(file, ckey){
                        hdr.findIndex((h,i)=>h.includes('location')&&!h.includes('desc')&&i!==idxLocD);
       // Column D (index 3) is the Material # per file spec; use header detection with col-3 fallback
       const idxMat   = (()=>{ const i=hdr.findIndex(h=>h.includes('material')||h.includes('matnr')||h.includes('mat.nr')||h.includes('mat nr')); return i>=0?i:3; })();
+      // VIZ_APO_LOC_PROD column (NL only) — determines HEERLEN ALLOCATION
+      const idxViz   = hdr.findIndex(h=>h.includes('viz_apo')||(h.includes('viz')&&h.includes('apo')));
+      if(ckey==='nl') INV_NL_PRDLOC.clear();
 
       if(idxCFN<0||idxQty<0){
         setInvCardError(ckey,'Required columns not found (CFN / Unrestricted Qty).');return;
@@ -5119,6 +5187,7 @@ function processInvFile(file, ckey){
         invRows.push({CFN:cfn, Location:locDesc, Qty:Math.round(qty), Material_Nr:matNr, _src:ckey});
 
         if(ckey==='nl'){
+          if(idxViz>=0){ const viz=(String(row[idxViz]||'').trim().toUpperCase()); if(viz==='PRDLOC') INV_NL_PRDLOC.add(cfn.toUpperCase()); }
           if(locDesc==='Atlas Finished Goods'){
             heerlen[cfn]=(heerlen[cfn]||0)+qty;
           }else if(locDesc.toLowerCase().includes('kitting')){
@@ -5144,6 +5213,7 @@ function processInvFile(file, ckey){
         }
         r.Stock_EA=Math.round(((r.DC_Heerlen||0)+(r.DC_Kits||0)+(r.DC_Rolo||0)+(r.DC_Alcala||0))*0.8);
       });
+      if(ckey==='nl') _refreshHeerlenAlloc();
 
       // ── Update INV_DATA: remove old _src records, add new ─────
       INV_DATA=INV_DATA.filter(r=>r._src!==ckey);
@@ -5562,6 +5632,7 @@ function processFCSTFile(file, fkey){
       // Recalculate Weekly_Demand, then cascade Dev% / Impact / Scatter
       recalcWeeklyDemand();
       recalcRORDevImpact();
+      _refreshHeerlenAlloc();
       rorFiltered=[...ROR_DATA]; rorPage=1;
       if(typeof renderROR==='function') renderROR();
       if(typeof buildTopBO==='function') buildTopBO();
@@ -5673,6 +5744,12 @@ function recalcRORDevImpact(){
   // Rebuild scatter arrays and refresh chart to reflect updated Dev% / Impact
   if(typeof rebuildScatterData==='function') rebuildScatterData();
   if(typeof buildScatterChart==='function')  buildScatterChart();
+}
+function _refreshHeerlenAlloc(){
+  ROR_DATA.forEach(r=>{
+    const cfn=(r.CFN||'').trim().toUpperCase();
+    r.Heerlen_Allocation=INV_NL_PRDLOC.size>0?(INV_NL_PRDLOC.has(cfn)?'PRDLOC':'SYSTEM'):'';
+  });
 }
 function processSTOFile(file){
   const reader=new FileReader();
