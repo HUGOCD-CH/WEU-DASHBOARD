@@ -1831,6 +1831,19 @@ function _buildFcstDemandCharts(q, mpgF, exactCFNs){
     };
     // Extract {l2,l1,l0,d} for one month from the selected region
     const _regionMonth = (m, cm) => {
+      // Case 0: country group — aggregate COUNTRY_FCST_MAP across all group members
+      const _grp = (typeof COUNTRY_GROUPS!=='undefined') && COUNTRY_GROUPS.find(g=>g.key===selKey);
+      if(_grp){
+        let l2=0,l1=0,l0=0,d=0;
+        _grp.members.forEach(mem=>{
+          const mfcm=(typeof COUNTRY_FCST_MAP!=='undefined')&&COUNTRY_FCST_MAP[mem];
+          if(!mfcm||!mfcm[m]) return;
+          const me=mfcm[m];
+          l2+=_sumObj(me.cfnFcst2); l1+=_sumObj(me.cfnFcst1);
+          l0+=_sumObj(me.cfnFcst);  d +=_sumObj(me.cfnDemand);
+        });
+        return {l2,l1,l0,d};
+      }
       // Case 1: per-country COUNTRY_FCST_MAP entry (has all lag tiers)
       const fcm = (typeof COUNTRY_FCST_MAP!=='undefined') && COUNTRY_FCST_MAP[selKey];
       if(fcm && fcm[m]){
@@ -2030,7 +2043,7 @@ const QUARTER_CFG = {
 let _countryTableQuarter = 'q4';
 // Country group definitions for WEU view
 const COUNTRY_GROUPS = [
-  { key:'FRANCE_GROUP',  label:'🇫🇷 France Group',  members:['FRANCE','REUNION','GUADELOUPE','MARTINIQUE','MAYOTTE','NEW CALEDONIA','SAINT MARTIN','ST. HELENA','FRENCH POLYNES'] },
+  { key:'FRANCE_GROUP',  label:'🇫🇷 France Group',  members:['FRANCE','REUNION','GUADELOUPE','MARTINIQUE','MAYOTTE','NEW CALEDONIA','SAINT MARTIN','ST. HELENA','FRENCH POLYNES','FRENCH POLYNES.'] },
   { key:'ITALY_GROUP',   label:'🇮🇹 Italy Group',   members:['ITALY','SAN MARINO'] },
   { key:'UKI_GROUP',     label:'🇬🇧 UKI Group',     members:['UNITED KINGDOM','IRELAND','FAROE ISLANDS','GIBRALTAR'] },
   { key:'IBERIA_GROUP',  label:'🇪🇸 Iberia',        members:['SPAIN','PORTUGAL','CANARY ISLANDS'] },
@@ -2041,8 +2054,8 @@ const COUNTRY_GROUPS = [
 // Build fast lookup: country cKey → group key
 const _CKEY_TO_GROUP = {};
 COUNTRY_GROUPS.forEach(g => g.members.forEach(m => { _CKEY_TO_GROUP[m] = g.key; }));
-// Set of collapsed group keys (empty = all expanded)
-let _collapsedGroups = new Set();
+// Set of collapsed group keys — all groups start collapsed
+let _collapsedGroups = new Set(COUNTRY_GROUPS.map(g=>g.key));
 
 // Key of the currently-selected country/region row (null = show default CEMA in right chart)
 let _selectedRegionKey = null;
