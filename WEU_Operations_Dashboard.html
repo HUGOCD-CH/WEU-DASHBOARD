@@ -2965,6 +2965,19 @@ function renderROR(){
   const s=(rorPage-1)*PAGE_SIZE;
   document.getElementById('ror-result-count').textContent=rorFiltered.length+' items';
 
+  // Resolve Monday of an ISO-week key like "W2026_16"
+  const _wkMon=k=>{
+    const m=k.match(/W(\d+)_(\d+)/); if(!m) return new Date(0);
+    const yr=+m[1], wk=+m[2];
+    const d=new Date(yr,0,4); // Jan 4 is always in ISO week 1
+    d.setDate(d.getDate()-(d.getDay()||7)+1+(wk-1)*7);
+    return d;
+  };
+  const _today=new Date(); _today.setHours(0,0,0,0);
+  const _curMon=new Date(_today); _curMon.setDate(_today.getDate()-(_today.getDay()||7)+1);
+  // Show current week onwards (≥4 weeks look-ahead), only weeks with active shipments
+  const activeWeekKeys=WEEK_KEYS.filter(k=>_wkMon(k)>=_curMon&&ROR_DATA.some(r=>r[k]!=null&&r[k]>0));
+
   // Dynamic sortable thead
   const thead=document.getElementById('ror-thead');
   if(thead){
@@ -2974,12 +2987,9 @@ function renderROR(){
       const bg=isActive?'#0a4a8a':'#003366';
       return `<th style="background:${bg};cursor:pointer;user-select:none" onclick="sortROR('${c.key}')" title="Sort by ${c.label}">${c.label}${ind}</th>`;
     }).join('');
-    const activeWeekKeys=WEEK_KEYS.filter(k=>ROR_DATA.some(r=>r[k]!=null&&r[k]>0));
     const weekThs=activeWeekKeys.map(k=>`<th style="background:#003366;color:#fff;padding:8px 10px;font-size:11px;white-space:nowrap;position:sticky;top:0;z-index:2">${WEEK_LABELS[k]||k}</th>`).join('');
     thead.innerHTML=`<tr>${fixedThs}${weekThs}</tr>`;
   }
-
-  const activeWeekKeys=WEEK_KEYS.filter(k=>ROR_DATA.some(r=>r[k]!=null&&r[k]>0));
   // Tbody
   document.getElementById('ror-body').innerHTML=rorFiltered.slice(s,s+PAGE_SIZE).map(r=>`<tr>
     <td title="${esc(r.MPG||'')}" style="font-size:10px">${esc((r.MPG||'').replace(/^[A-Z0-9]+ - /,'').substring(0,16))}</td>
