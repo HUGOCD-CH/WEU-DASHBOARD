@@ -645,7 +645,21 @@ body.dark-mode .country-cards-empty{color:#5a7a9a;}
 
   <!-- 4. Top 10 BO Table -->
   <div id="weu-top10-wrap" class="top-table-wrap">
-    <h3 class="section-title">📦 Top 10 Backorder Items by Value — <span id="top-bo-region-label" style="color:#0056a3;font-weight:700;">🌍 WEU</span></h3>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding-bottom:6px;border-bottom:2px solid #e0e8f0;flex-wrap:wrap;">
+      <span style="font-size:14px;font-weight:700;color:#003366;">📦 Top 10 Items by Value</span>
+      <select id="top10-cat-select" onchange="setTop10Category(this.value)"
+        style="font-size:11px;font-weight:600;padding:3px 8px;border:1.5px solid #d0dff0;border-radius:6px;background:#f5f8ff;color:#003366;cursor:pointer;">
+        <option value="bo" selected>Backorder</option>
+        <option value="total">Total Open Order</option>
+        <option value="pastdue">Past Due Orders</option>
+        <option value="future">Future Orders</option>
+        <option value="shipped">Shipped Not Invoiced</option>
+        <option value="dc">DC Workload</option>
+        <option value="current">Current Orders</option>
+      </select>
+      <span style="font-size:13px;color:#5a7a9a;">—</span>
+      <span id="top-bo-region-label" style="font-size:14px;font-weight:700;color:#0056a3;">🌍 WEU</span>
+    </div>
     <div class="table-wrap">
     <table id="top-bo-table">
       <thead id="top-bo-thead"><tr><th>MPG</th><th>CFN</th><th>Description</th><th>BO QTY</th><th>BO Value ($)</th><th>Past Due</th><th>Stock EA</th><th>2wk Shipments</th><th>2-Wk Dev %</th><th>Expected $ Impact</th></tr></thead>
@@ -2048,6 +2062,8 @@ const _CKEY_TO_GROUP = {};
 COUNTRY_GROUPS.forEach(g => g.members.forEach(m => { _CKEY_TO_GROUP[m] = g.key; }));
 // Set of collapsed group keys — all groups start collapsed
 let _collapsedGroups = new Set(COUNTRY_GROUPS.map(g=>g.key));
+// Active category for the Top 10 Items table
+let _top10Category = 'bo';
 
 // Key of the currently-selected country/region row (null = show default CEMA in right chart)
 let _selectedRegionKey = null;
@@ -2081,6 +2097,11 @@ function toggleCountryGroup(key, evt){
   const qv  = (document.getElementById('global-cfn')||{value:''}).value.trim().toLowerCase();
   const mpgF= (document.getElementById('global-mpg')||{value:''}).value;
   buildCountryCards(qv, mpgF, (typeof cfnSelectedSet!=='undefined'&&cfnSelectedSet.length>0)?cfnSelectedSet:[]);
+}
+
+function setTop10Category(cat){
+  _top10Category = cat;
+  _renderRegionTop10BO(_selectedRegionKey);
 }
 // Country table lag selection (lag0 / lag1 / lag2)
 let _countryTableLag = 'lag0';
@@ -2476,13 +2497,17 @@ function buildTopBO(){
   </tr>`).join('');
 }
 function _renderRegionTop10BO(key){
-  const labelEl = document.getElementById('top-bo-region-label');
-  const thead   = document.getElementById('top-bo-thead');
-  const tbody   = document.getElementById('top-bo-body');
+  const labelEl  = document.getElementById('top-bo-region-label');
+  const thead    = document.getElementById('top-bo-thead');
+  const tbody    = document.getElementById('top-bo-body');
+  const selectEl = document.getElementById('top10-cat-select');
   if(!tbody) return;
 
+  const cat = _top10Category || 'bo';
+  if(selectEl && selectEl.value !== cat) selectEl.value = cat;
+
+  const _regCols='<tr><th>MPG</th><th>CFN</th><th>Description</th><th>QTY</th><th>Value ($)</th></tr>';
   const _weuCols='<tr><th>MPG</th><th>CFN</th><th>Description</th><th>BO QTY</th><th>BO Value ($)</th><th>Past Due</th><th>Stock EA</th><th>2wk Shipments</th><th>2-Wk Dev %</th><th>Expected $ Impact</th></tr>';
-  const _regCols='<tr><th>MPG</th><th>CFN</th><th>Description</th><th>BO QTY</th><th>BO Value ($)</th></tr>';
   const _fmtV=v=>v>=1e6?'$'+(v/1e6).toFixed(2)+'M':'$'+Math.round(v).toLocaleString();
 
   const _renderRows=(items)=>items.map(r=>{
@@ -2499,64 +2524,97 @@ function _renderRegionTop10BO(key){
     </tr>`;
   }).join('');
 
-  if(!key){
-    // Deselected — restore WEU label, full columns and WEU data
-    if(labelEl) labelEl.textContent='🌍 WEU';
-    if(thead) thead.innerHTML=_weuCols;
-    buildTopBO();
-    return;
-  }
-
-  // ── WEU: top 10 from ROR_DATA, narrow columns (same layout as other regions) ──
-  if(key==='WEU'){
-    const items=[...ROR_DATA].filter(r=>(r.BO_Value||0)>0)
-      .sort((a,b)=>(b.BO_Value||0)-(a.BO_Value||0)).slice(0,10)
-      .map(r=>({cfn:r.CFN||'', qty:r.BO_QTY||0, val:r.BO_Value||0}));
-    if(items.length===0){ _renderRegionTop10BO(null); return; }
-    if(labelEl) labelEl.textContent='🌍 WEU';
-    if(thead) thead.innerHTML=_regCols;
-    tbody.innerHTML=_renderRows(items);
-    return;
-  }
-
-  // ── CEMA: use CEMA_BO_QTY_MAP / CEMA_BO_VAL_MAP ─────────────────────────
-  if(key==='CEMA'){
-    const cq=typeof CEMA_BO_QTY_MAP!=='undefined'?CEMA_BO_QTY_MAP:{};
-    const cv=typeof CEMA_BO_VAL_MAP!=='undefined'?CEMA_BO_VAL_MAP:{};
-    const items=Object.keys(cv)
-      .map(c=>({cfn:c, qty:cq[c]||0, val:cv[c]||0}))
-      .filter(x=>x.val>0).sort((a,b)=>b.val-a.val).slice(0,10);
-    if(items.length===0){ _renderRegionTop10BO(null); return; }
-    if(labelEl) labelEl.textContent='🌿 CEMA';
-    if(thead) thead.innerHTML=_regCols;
-    tbody.innerHTML=_renderRows(items);
-    return;
-  }
-
-  // ── Country group: aggregate COUNTRY_BO_MAP across members ───────────────
-  const grp=(typeof COUNTRY_GROUPS!=='undefined')&&COUNTRY_GROUPS.find(g=>g.key===key);
-  let cfnQty={}, cfnVal={};
-  if(grp){
-    grp.members.forEach(m=>{
-      const cm=(typeof COUNTRY_BO_MAP!=='undefined')&&COUNTRY_BO_MAP[m];
-      if(!cm) return;
-      Object.entries(cm.cfnQty||{}).forEach(([c,q])=>{ cfnQty[c]=(cfnQty[c]||0)+q; });
-      Object.entries(cm.cfnVal||{}).forEach(([c,v])=>{ cfnVal[c]=(cfnVal[c]||0)+v; });
-    });
-  } else {
-    const cm=(typeof COUNTRY_BO_MAP!=='undefined')&&COUNTRY_BO_MAP[key];
-    if(cm){ cfnQty=cm.cfnQty||{}; cfnVal=cm.cfnVal||{}; }
-  }
-
-  const items=Object.keys(cfnVal)
-    .map(c=>({cfn:c, qty:cfnQty[c]||0, val:cfnVal[c]||0}))
+  // Helper: extract sorted top-10 items from a {cfnQty, cfnVal} object
+  const _top10From=(cq,cv)=>Object.keys(cv)
+    .map(c=>({cfn:c, qty:cq[c]||0, val:cv[c]||0}))
     .filter(x=>x.val>0).sort((a,b)=>b.val-a.val).slice(0,10);
 
-  if(items.length===0){ _renderRegionTop10BO(null); return; }
+  if(!key){
+    // Deselected — default WEU full view uses buildTopBO() for backorder,
+    // or OO_CAT_MAP for other categories
+    if(cat==='bo'){
+      if(labelEl) labelEl.textContent='🌍 WEU';
+      if(thead) thead.innerHTML=_weuCols;
+      buildTopBO();
+    } else {
+      const ocm=typeof OO_CAT_MAP!=='undefined'?OO_CAT_MAP:{};
+      const cq={}, cv={};
+      Object.entries(ocm).forEach(([cfn,cats])=>{
+        const c=cats[cat]; if(!c) return;
+        cq[cfn]=(cq[cfn]||0)+c.qty; cv[cfn]=(cv[cfn]||0)+c.val;
+      });
+      const items=_top10From(cq,cv);
+      if(labelEl) labelEl.textContent='🌍 WEU';
+      if(thead) thead.innerHTML=_regCols;
+      tbody.innerHTML=items.length?_renderRows(items):'<tr><td colspan="5" style="text-align:center;padding:12px;color:#888">No data for this category</td></tr>';
+    }
+    return;
+  }
 
+  // ── WEU ─────────────────────────────────────────────────────────────────
+  if(key==='WEU'){
+    if(cat==='bo'){
+      const items=[...ROR_DATA].filter(r=>(r.BO_Value||0)>0)
+        .sort((a,b)=>(b.BO_Value||0)-(a.BO_Value||0)).slice(0,10)
+        .map(r=>({cfn:r.CFN||'', qty:r.BO_QTY||0, val:r.BO_Value||0}));
+      if(labelEl) labelEl.textContent='🌍 WEU';
+      if(thead) thead.innerHTML=_regCols;
+      tbody.innerHTML=items.length?_renderRows(items):'<tr><td colspan="5" style="text-align:center;padding:12px;color:#888">No data loaded</td></tr>';
+    } else {
+      const ocm=typeof OO_CAT_MAP!=='undefined'?OO_CAT_MAP:{};
+      const cq={}, cv={};
+      Object.entries(ocm).forEach(([cfn,cats])=>{
+        const c=cats[cat]; if(!c) return;
+        cq[cfn]=(cq[cfn]||0)+c.qty; cv[cfn]=(cv[cfn]||0)+c.val;
+      });
+      const items=_top10From(cq,cv);
+      if(labelEl) labelEl.textContent='🌍 WEU';
+      if(thead) thead.innerHTML=_regCols;
+      tbody.innerHTML=items.length?_renderRows(items):'<tr><td colspan="5" style="text-align:center;padding:12px;color:#888">No data for this category</td></tr>';
+    }
+    return;
+  }
+
+  // ── CEMA ─────────────────────────────────────────────────────────────────
+  if(key==='CEMA'){
+    const cemaCat=(typeof COUNTRY_OO_MAP!=='undefined')&&COUNTRY_OO_MAP['CEMA']&&COUNTRY_OO_MAP['CEMA'][cat];
+    const cq=cemaCat?cemaCat.cfnQty:{};
+    const cv=cemaCat?cemaCat.cfnVal:{};
+    // Fallback for bo if per-CFN not yet available (old data)
+    const items=_top10From(
+      Object.keys(cv).length?cq : (cat==='bo'?(typeof CEMA_BO_QTY_MAP!=='undefined'?CEMA_BO_QTY_MAP:{}):{}),
+      Object.keys(cv).length?cv : (cat==='bo'?(typeof CEMA_BO_VAL_MAP!=='undefined'?CEMA_BO_VAL_MAP:{}):{}),
+    );
+    if(labelEl) labelEl.textContent='🌿 CEMA';
+    if(thead) thead.innerHTML=_regCols;
+    tbody.innerHTML=items.length?_renderRows(items):'<tr><td colspan="5" style="text-align:center;padding:12px;color:#888">No data for this category</td></tr>';
+    return;
+  }
+
+  // ── Country group or individual country ───────────────────────────────────
+  const grp=(typeof COUNTRY_GROUPS!=='undefined')&&COUNTRY_GROUPS.find(g=>g.key===key);
+  let cfnQty={}, cfnVal={};
+  const _mergeOOM=(k)=>{
+    const oom=(typeof COUNTRY_OO_MAP!=='undefined')&&COUNTRY_OO_MAP[k];
+    if(oom&&oom[cat]){
+      Object.entries(oom[cat].cfnQty||{}).forEach(([c,q])=>{ cfnQty[c]=(cfnQty[c]||0)+q; });
+      Object.entries(oom[cat].cfnVal||{}).forEach(([c,v])=>{ cfnVal[c]=(cfnVal[c]||0)+v; });
+    } else if(cat==='bo'){
+      // fallback: COUNTRY_BO_MAP for backorder
+      const cm=(typeof COUNTRY_BO_MAP!=='undefined')&&COUNTRY_BO_MAP[k];
+      if(cm){
+        Object.entries(cm.cfnQty||{}).forEach(([c,q])=>{ cfnQty[c]=(cfnQty[c]||0)+q; });
+        Object.entries(cm.cfnVal||{}).forEach(([c,v])=>{ cfnVal[c]=(cfnVal[c]||0)+v; });
+      }
+    }
+  };
+  if(grp){ grp.members.forEach(_mergeOOM); }
+  else    { _mergeOOM(key); }
+
+  const items=_top10From(cfnQty, cfnVal);
   if(labelEl) labelEl.textContent = grp ? grp.label : key;
   if(thead) thead.innerHTML=_regCols;
-  tbody.innerHTML=_renderRows(items);
+  tbody.innerHTML=items.length?_renderRows(items):'<tr><td colspan="5" style="text-align:center;padding:12px;color:#888">No data for this category</td></tr>';
 }
 
 function _applyKPIRegion(key){
@@ -3912,7 +3970,7 @@ function _readBODetails(file){
         }
         let totalVal=0, totalQty=0; // BO-only totals (backward compat for COUNTRY_BO_MAP)
         const cfnQty={}, cfnVal={};
-        const blank=()=>({qty:0,val:0});
+        const blank=()=>({qty:0,val:0,cfnQty:{},cfnVal:{}});
         const cats={total:blank(),bo:blank(),pastdue:blank(),future:blank(),shipped:blank(),dc:blank(),current:blank()};
         for(let i=1;i<rows.length;i++){
           const row=rows[i];
@@ -3922,18 +3980,24 @@ function _readBODetails(file){
           const cat=String(row[idxCat]||'').toLowerCase();
           const v=parseFloat(row[idxVal])||0;
           const q=idxQty>=0?(parseFloat(row[idxQty])||0):0;
-          // All-categories KPI aggregation
+          // All-categories KPI + per-CFN aggregation
           const ck=_ck(cat);
-          if(ck) cats[ck].qty+=q, cats[ck].val+=v;
+          if(ck){ cats[ck].qty+=q; cats[ck].val+=v; }
           cats.total.qty+=q; cats.total.val+=v;
-          // BO-only for backward compat (cfnQty/cfnVal used by country cards)
-          if(cat.includes('backorder')){
-            totalVal+=v; totalQty+=q;
-            if(idxCFN>=0){
-              const cfn=String(row[idxCFN]||'').trim().toUpperCase();
-              if(cfn&&cfn!=='NULL'){ cfnVal[cfn]=(cfnVal[cfn]||0)+v; cfnQty[cfn]=(cfnQty[cfn]||0)+q; }
+          if(idxCFN>=0){
+            const cfn=String(row[idxCFN]||'').trim().toUpperCase();
+            if(cfn&&cfn!=='NULL'){
+              if(ck){
+                cats[ck].cfnQty[cfn]=(cats[ck].cfnQty[cfn]||0)+q;
+                cats[ck].cfnVal[cfn]=(cats[ck].cfnVal[cfn]||0)+v;
+              }
+              cats.total.cfnQty[cfn]=(cats.total.cfnQty[cfn]||0)+q;
+              cats.total.cfnVal[cfn]=(cats.total.cfnVal[cfn]||0)+v;
+              // BO-only backward compat
+              if(ck==='bo'){ cfnVal[cfn]=(cfnVal[cfn]||0)+v; cfnQty[cfn]=(cfnQty[cfn]||0)+q; }
             }
           }
+          if(ck==='bo'){ totalVal+=v; totalQty+=q; }
         }
         resolve({totalVal, totalQty, cfnQty, cfnVal, cats});
       }catch(err){resolve({totalVal:0,totalQty:0,cfnQty:{},cfnVal:{},cats:null});}
@@ -4215,7 +4279,7 @@ function processCEMABO(file){
         if(cat.includes('current'))                      return 'current';
         return null;
       }
-      const _b=()=>({qty:0,val:0});
+      const _b=()=>({qty:0,val:0,cfnQty:{},cfnVal:{}});
       const cemaCats={total:_b(),bo:_b(),pastdue:_b(),future:_b(),shipped:_b(),dc:_b(),current:_b()};
       for(let i=1;i<rows.length;i++){
         const row=rows[i];
@@ -4226,13 +4290,20 @@ function processCEMABO(file){
         const cfn=String(row[idxCFN]||'').trim().toUpperCase();
         const qty=parseInt(row[idxQty])||0;
         const val=idxVal>=0?(parseFloat(row[idxVal])||0):0;
-        // All-categories KPI totals
+        // All-categories KPI totals + per-CFN breakdown
         const ck=_cemaCk(cat);
         if(ck){ cemaCats[ck].qty+=qty; cemaCats[ck].val+=val; }
         cemaCats.total.qty+=qty; cemaCats.total.val+=val;
-        // BO-only for CEMA_BO_QTY_MAP / CEMA_BO_VAL_MAP (backward compat)
-        if(!cat.includes('backorder')) continue;
-        if(!cfn) continue;
+        if(cfn){
+          if(ck){
+            cemaCats[ck].cfnQty[cfn]=(cemaCats[ck].cfnQty[cfn]||0)+qty;
+            cemaCats[ck].cfnVal[cfn]=(cemaCats[ck].cfnVal[cfn]||0)+val;
+          }
+          cemaCats.total.cfnQty[cfn]=(cemaCats.total.cfnQty[cfn]||0)+qty;
+          cemaCats.total.cfnVal[cfn]=(cemaCats.total.cfnVal[cfn]||0)+val;
+        }
+        // BO-only backward compat for CEMA_BO_QTY_MAP / CEMA_BO_VAL_MAP
+        if(!cat.includes('backorder')||!cfn) continue;
         map[cfn]=(map[cfn]||0)+qty;
         valMap[cfn]=(valMap[cfn]||0)+val;
         totalQty+=qty;
