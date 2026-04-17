@@ -2481,15 +2481,55 @@ function _renderRegionTop10BO(key){
   const tbody   = document.getElementById('top-bo-body');
   if(!tbody) return;
 
+  const _weuCols='<tr><th>MPG</th><th>CFN</th><th>Description</th><th>BO QTY</th><th>BO Value ($)</th><th>Past Due</th><th>Stock EA</th><th>2wk Shipments</th><th>2-Wk Dev %</th><th>Expected $ Impact</th></tr>';
+  const _regCols='<tr><th>MPG</th><th>CFN</th><th>Description</th><th>BO QTY</th><th>BO Value ($)</th></tr>';
+  const _fmtV=v=>v>=1e6?'$'+(v/1e6).toFixed(2)+'M':'$'+Math.round(v).toLocaleString();
+
+  const _renderRows=(items)=>items.map(r=>{
+    const mpg=(typeof CFN_MPG_MAP!=='undefined'&&CFN_MPG_MAP[r.cfn])||'';
+    const rorRow=(typeof ROR_DATA!=='undefined')&&ROR_DATA.find(d=>d.CFN===r.cfn);
+    const desc=rorRow?(rorRow.Description||''):'';
+    const descShort=desc.length>40?desc.substring(0,39)+'…':desc;
+    return `<tr>
+      <td><span class="tag tag-blue" style="font-size:9px">${esc(mpg.replace(/^[A-Z0-9]+ - /,'').substring(0,16))}</span></td>
+      <td><b>${esc(r.cfn)}</b></td>
+      <td title="${esc(desc)}">${esc(descShort)}</td>
+      <td class="num" style="color:#c0392b;font-weight:600">${Math.round(r.qty).toLocaleString()}</td>
+      <td class="num" style="color:#c0392b">${_fmtV(r.val)}</td>
+    </tr>`;
+  }).join('');
+
   if(!key){
-    // Deselected — restore WEU label, columns and data
+    // Deselected — restore WEU label, full columns and WEU data
     if(labelEl) labelEl.textContent='🌍 WEU';
-    if(thead) thead.innerHTML='<tr><th>MPG</th><th>CFN</th><th>Description</th><th>BO QTY</th><th>BO Value ($)</th><th>Past Due</th><th>Stock EA</th><th>2wk Shipments</th><th>2-Wk Dev %</th><th>Expected $ Impact</th></tr>';
+    if(thead) thead.innerHTML=_weuCols;
     buildTopBO();
     return;
   }
 
-  // Aggregate cfnQty / cfnVal — individual country or group
+  // ── WEU: use ROR_DATA (same as default but keeps the selection label) ──────
+  if(key==='WEU'){
+    if(labelEl) labelEl.textContent='🌍 WEU';
+    if(thead) thead.innerHTML=_weuCols;
+    buildTopBO();
+    return;
+  }
+
+  // ── CEMA: use CEMA_BO_QTY_MAP / CEMA_BO_VAL_MAP ─────────────────────────
+  if(key==='CEMA'){
+    const cq=typeof CEMA_BO_QTY_MAP!=='undefined'?CEMA_BO_QTY_MAP:{};
+    const cv=typeof CEMA_BO_VAL_MAP!=='undefined'?CEMA_BO_VAL_MAP:{};
+    const items=Object.keys(cv)
+      .map(c=>({cfn:c, qty:cq[c]||0, val:cv[c]||0}))
+      .filter(x=>x.val>0).sort((a,b)=>b.val-a.val).slice(0,10);
+    if(items.length===0){ _renderRegionTop10BO(null); return; }
+    if(labelEl) labelEl.textContent='🌿 CEMA';
+    if(thead) thead.innerHTML=_regCols;
+    tbody.innerHTML=_renderRows(items);
+    return;
+  }
+
+  // ── Country group: aggregate COUNTRY_BO_MAP across members ───────────────
   const grp=(typeof COUNTRY_GROUPS!=='undefined')&&COUNTRY_GROUPS.find(g=>g.key===key);
   let cfnQty={}, cfnVal={};
   if(grp){
@@ -2506,33 +2546,13 @@ function _renderRegionTop10BO(key){
 
   const items=Object.keys(cfnVal)
     .map(c=>({cfn:c, qty:cfnQty[c]||0, val:cfnVal[c]||0}))
-    .filter(x=>x.val>0)
-    .sort((a,b)=>b.val-a.val)
-    .slice(0,10);
+    .filter(x=>x.val>0).sort((a,b)=>b.val-a.val).slice(0,10);
 
-  // No BO data loaded for this region — revert to WEU
   if(items.length===0){ _renderRegionTop10BO(null); return; }
 
-  const displayName = grp ? grp.label : key;
-  if(labelEl) labelEl.textContent = displayName;
-
-  // Narrow columns (no Dev%/Impact for region view)
-  if(thead) thead.innerHTML='<tr><th>MPG</th><th>CFN</th><th>Description</th><th>BO QTY</th><th>BO Value ($)</th></tr>';
-
-  const _fmtV=v=>v>=1e6?'$'+(v/1e6).toFixed(2)+'M':'$'+Math.round(v).toLocaleString();
-  tbody.innerHTML=items.map(r=>{
-    const mpg=(typeof CFN_MPG_MAP!=='undefined'&&CFN_MPG_MAP[r.cfn])||'';
-    const rorRow=(typeof ROR_DATA!=='undefined')&&ROR_DATA.find(d=>d.CFN===r.cfn);
-    const desc=rorRow?(rorRow.Description||''):'';
-    const descShort=desc.length>40?desc.substring(0,39)+'…':desc;
-    return `<tr>
-      <td><span class="tag tag-blue" style="font-size:9px">${esc(mpg.replace(/^[A-Z0-9]+ - /,'').substring(0,16))}</span></td>
-      <td><b>${esc(r.cfn)}</b></td>
-      <td title="${esc(desc)}">${esc(descShort)}</td>
-      <td class="num" style="color:#c0392b;font-weight:600">${Math.round(r.qty).toLocaleString()}</td>
-      <td class="num" style="color:#c0392b">${_fmtV(r.val)}</td>
-    </tr>`;
-  }).join('');
+  if(labelEl) labelEl.textContent = grp ? grp.label : key;
+  if(thead) thead.innerHTML=_regCols;
+  tbody.innerHTML=_renderRows(items);
 }
 
 function _applyKPIRegion(key){
