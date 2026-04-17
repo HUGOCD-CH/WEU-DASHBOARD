@@ -3011,11 +3011,11 @@ function _renderFCSTBody(){
 
   // Two-row header: Row 1 = WEU / CEMA group labels; Row 2 = individual column headers
   const thead=document.getElementById('fcst-thead');
-  const _th=(key,lbl,bg,extra='')=>{const ia=fcstSortCol===key;const b=ia?bg+'dd':bg;const ind=ia?(fcstSortDir>0?' ▲':' ▼'):'';return `<th style="background:${b};cursor:pointer;user-select:none;${extra}" onclick="sortFCST('${key}')" title="Sort by ${lbl}">${lbl}${ind}</th>`;};
+  const _th=(key,lbl,bg,extra='',rs=1)=>{const ia=fcstSortCol===key;const b=ia?bg+'dd':bg;const ind=ia?(fcstSortDir>0?' ▲':' ▼'):'';const rspan=rs>1?` rowspan="${rs}"`:'';return `<th${rspan} style="background:${b};cursor:pointer;user-select:none;${extra}" onclick="sortFCST('${key}')" title="Sort by ${lbl}">${lbl}${ind}</th>`;};
   if(thead) thead.innerHTML=`<tr>
-    ${_th('cfn', 'CFN',         '#003366','padding:4px 6px;white-space:nowrap;')}
-    ${_th('mpg', 'MPG',         '#003366','padding:4px 6px;white-space:nowrap;')}
-    ${_th('wBo', 'WEU BO (QTY)','#1b3f6e','padding:4px 6px;white-space:nowrap;')}
+    ${_th('cfn', 'CFN',         '#003366','padding:4px 6px;white-space:nowrap;vertical-align:middle;',2)}
+    ${_th('mpg', 'MPG',         '#003366','padding:4px 6px;white-space:nowrap;vertical-align:middle;',2)}
+    ${_th('wBo', 'WEU BO (QTY)','#1b3f6e','padding:4px 6px;white-space:nowrap;vertical-align:middle;',2)}
     <th colspan="4" style="background:#1b3f6e;text-align:center;padding:4px 6px;border-bottom:1px solid rgba(255,255,255,.25)">WEU</th>
     <th colspan="4" style="background:#1a5c35;text-align:center;padding:4px 6px;border-bottom:1px solid rgba(255,255,255,.25)">CEMA</th>
   </tr><tr>
