@@ -2980,17 +2980,13 @@ function renderROR(){
   const _curMon=new Date(_today); _curMon.setDate(_today.getDate()-(_today.getDay()||7)+1);
   const activeWeekKeys=WEEK_KEYS.filter(k=>_wkMon(k)>=_curMon&&ROR_DATA.some(r=>r[k]!=null&&r[k]>0));
 
-  // Q4 Forecast Consumption %: sum(Q4 Demand) / sum(Q4 Fcst Lag0) × 100 per CFN
+  // Q4 Forecast Consumption %: same calculation as Dashboard — Total Demand Q4 / Total FCST_Lag0 Q4
   const _q4Map={};
-  if(typeof COUNTRY_FCST_MAP!=='undefined'&&typeof QUARTER_CFG!=='undefined'){
-    const _qt=typeof _countryTableQuarter!=='undefined'?_countryTableQuarter:'q4';
-    const qMths=(QUARTER_CFG[_qt]||QUARTER_CFG.q4).months;
-    Object.values(COUNTRY_FCST_MAP).forEach(cd=>{
-      qMths.forEach(m=>{
-        if(!cd[m]) return;
-        Object.entries(cd[m].cfnFcst||{}).forEach(([cfn,qty])=>{ if(!_q4Map[cfn]) _q4Map[cfn]={dem:0,fcst:0}; _q4Map[cfn].fcst+=(qty||0); });
-        Object.entries(cd[m].cfnDemand||{}).forEach(([cfn,qty])=>{ if(!_q4Map[cfn]) _q4Map[cfn]={dem:0,fcst:0}; _q4Map[cfn].dem+=(qty||0); });
-      });
+  if(typeof FCST_DATA!=='undefined'&&typeof DEMAND_DATA!=='undefined'&&typeof QUARTER_CFG!=='undefined'){
+    const qMths=QUARTER_CFG.q4.months;
+    qMths.forEach(m=>{
+      Object.entries(FCST_DATA[m]||{}).forEach(([cfn,qty])=>{ if(!_q4Map[cfn]) _q4Map[cfn]={dem:0,fcst:0}; _q4Map[cfn].fcst+=(qty||0); });
+      Object.entries(DEMAND_DATA[m]||{}).forEach(([cfn,qty])=>{ if(!_q4Map[cfn]) _q4Map[cfn]={dem:0,fcst:0}; _q4Map[cfn].dem+=(qty||0); });
     });
   }
 
@@ -3028,7 +3024,7 @@ function renderROR(){
 
   // Tbody
   document.getElementById('ror-body').innerHTML=rorFiltered.slice(s,s+PAGE_SIZE).map(r=>{
-    const cfn=(r.CFN||'').toUpperCase();
+    const cfn=r.CFN||'';
     const q4e=_q4Map[cfn];
     const q4Pct=q4e&&q4e.fcst>0?Math.round(q4e.dem/q4e.fcst*1000)/10:null;
     const allocClr=r.Heerlen_Allocation==='PRDLOC'?'color:#1e7e34;font-weight:600':'color:#5a7a9a';
@@ -3055,91 +3051,111 @@ function renderROR(){
 }
 
 async function exportRORToExcel(){
-  // Show loading state on button
   const btn=document.querySelector('button[onclick="exportRORToExcel()"]');
   if(btn){btn.textContent='⏳ Generating…';btn.disabled=true;}
 
   try{
-    // ── 1. Build headers and data ───────────────────────────────────────────
-    // ROR_COLS labels (flatten multiline), then Q4 FCST Cons. %, then week labels
-    const _flatLabel=s=>s.replace(/\n/g,' ');
-    const headers=[...ROR_COLS.map(c=>_flatLabel(c.label)),'Q4 FCST Cons. %',...WEEK_KEYS.map(k=>WEEK_LABELS[k]||k)];
-    const numCols=headers.length;
-    // colWidths: 4 MASTER + 11 WE + 1 Q4 + 4 DC + weeks
-    const colWidths=[24,13,38,13, 9,14,11,11,9,11,15,13,10,12,18,14, 11,11,11,11, ...WEEK_KEYS.map(()=>11)];
+    // ── 1. Active week keys (same filter as renderROR) ──────────────────────
+    const _wkMon=k=>{ const m=k.match(/W(\d+)_(\d+)/); if(!m) return new Date(0); const yr=+m[1],wk=+m[2],d=new Date(yr,0,4); d.setDate(d.getDate()-(d.getDay()||7)+1+(wk-1)*7); return d; };
+    const _td=new Date(); _td.setHours(0,0,0,0);
+    const _cm=new Date(_td); _cm.setDate(_td.getDate()-(_td.getDay()||7)+1);
+    const activeWkKeys=WEEK_KEYS.filter(k=>_wkMon(k)>=_cm&&ROR_DATA.some(r=>r[k]!=null&&r[k]>0));
+    const N=activeWkKeys.length;
 
-    // Build Q4 map same as renderROR
-    const _xq4Map={};
-    if(typeof COUNTRY_FCST_MAP!=='undefined'&&typeof QUARTER_CFG!=='undefined'){
-      const _qt=typeof _countryTableQuarter!=='undefined'?_countryTableQuarter:'q4';
-      const qMths=(QUARTER_CFG[_qt]||QUARTER_CFG.q4).months;
-      Object.values(COUNTRY_FCST_MAP).forEach(cd=>{
-        qMths.forEach(m=>{
-          if(!cd[m]) return;
-          Object.entries(cd[m].cfnFcst||{}).forEach(([cfn,qty])=>{ if(!_xq4Map[cfn]) _xq4Map[cfn]={dem:0,fcst:0}; _xq4Map[cfn].fcst+=(qty||0); });
-          Object.entries(cd[m].cfnDemand||{}).forEach(([cfn,qty])=>{ if(!_xq4Map[cfn]) _xq4Map[cfn]={dem:0,fcst:0}; _xq4Map[cfn].dem+=(qty||0); });
-        });
+    // ── 2. Q4 FCST Cons. % — same calculation as Dashboard tab ─────────────
+    const _xq4={};
+    if(typeof FCST_DATA!=='undefined'&&typeof DEMAND_DATA!=='undefined'&&typeof QUARTER_CFG!=='undefined'){
+      const qMths=QUARTER_CFG.q4.months;
+      qMths.forEach(m=>{
+        Object.entries(FCST_DATA[m]||{}).forEach(([cfn,qty])=>{ if(!_xq4[cfn]) _xq4[cfn]={fcst:0,dem:0}; _xq4[cfn].fcst+=(qty||0); });
+        Object.entries(DEMAND_DATA[m]||{}).forEach(([cfn,qty])=>{ if(!_xq4[cfn]) _xq4[cfn]={fcst:0,dem:0}; _xq4[cfn].dem+=(qty||0); });
       });
     }
 
-    const dataRows=ROR_DATA.map(r=>{
-      const cfn=(r.CFN||'').toUpperCase();
-      const q4e=_xq4Map[cfn];
+    // ── 3. Column layout matching display ──────────────────────────────────
+    // MASTER DATA (4) | WE (12) | EMEA STOCK (4) | IN-TRANSIT (N)
+    const _fl=s=>s.replace(/\n/g,' ');
+    const leafHdrs=[
+      ...ROR_COLS.slice(0,15).map(c=>_fl(c.label)), // 4 MASTER + 11 WE
+      'Q4 FCST Cons. %',                              // 1 WE computed
+      ...ROR_COLS.slice(15).map(c=>_fl(c.label)),    // 4 DC
+      ...activeWkKeys.map(k=>WEEK_LABELS[k]||k)      // N weeks
+    ];
+    const numCols=leafHdrs.length;
+    const colWidths=[24,13,38,13, 9,14,11,11,9,11,15,13,10,12,18,14, 11,11,11,11, ...activeWkKeys.map(()=>11)];
+
+    // ── 4. Data rows ────────────────────────────────────────────────────────
+    const dataRows=rorFiltered.map(r=>{
+      const cfn=r.CFN||'';
+      const q4e=_xq4[cfn];
       const q4Pct=q4e&&q4e.fcst>0?Math.round(q4e.dem/q4e.fcst*1000)/10:null;
       return[
-        r.MPG||'', r.CFN||'', r.Description||'', r.Heerlen_Allocation||'',
+        r.MPG||'', cfn, r.Description||'', r.Heerlen_Allocation||'',
         r.BO_QTY??null, r.BO_Value??null,
         r.PastDue_QTY??null, r.FutureDue_QTY??null, r.OOB_QTY??null,
-        r.Stock_EA??null,
-        r.Shipments_2wk??null, r.Weekly_Demand??null,
-        r.WoC??null,
-        r.BO_Dev_2wk??null, r.BO_Impact_2wk??null,
+        r.Stock_EA??null, r.Shipments_2wk??null, r.Weekly_Demand??null,
+        r.WoC??null, r.BO_Dev_2wk??null, r.BO_Impact_2wk??null,
         q4Pct??null,
         r.DC_Heerlen??null, r.DC_Rolo??null, r.DC_Alcala??null, r.DC_Kits??null,
-        ...WEEK_KEYS.map(k=>r[k]??null)
+        ...activeWkKeys.map(k=>r[k]??null)
       ];
     });
 
-    // ── 2. Create workbook & worksheet ─────────────────────────────────────
+    // ── 5. Workbook & worksheet ─────────────────────────────────────────────
     const wb=new ExcelJS.Workbook();
     wb.creator='WEU Operations Dashboard';
     const ws=wb.addWorksheet('OPS ROR');
+    ws.columns=leafHdrs.map((h,i)=>({key:`c${i}`,width:colWidths[i]||12}));
 
-    // Column widths
-    ws.columns=headers.map((h,i)=>({key:`c${i}`,width:colWidths[i]||12}));
-
-    // ── 3. Header row ───────────────────────────────────────────────────────
-    const hdrRow=ws.addRow(headers);
-    hdrRow.height=22;
-    hdrRow.eachCell(cell=>{
-      cell.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF2E5FA3'}};
+    // ── 6. Row 1: group headers (merged, color-coded) ───────────────────────
+    ws.addRow([]); // placeholder so ExcelJS creates row 1
+    const grpRow=ws.getRow(1); grpRow.height=18;
+    const grpDefs=[
+      ['MASTER DATA',                        1,   4,  'FF002244'],
+      ['WESTERN EUROPE (BO* = BO + PAST DUE)', 5, 16, 'FF1A4080'],
+      ['EMEA — STOCK (EA) available',         17,  20, 'FF1A6A3A'],
+    ];
+    if(N>0) grpDefs.push(['EMEA IN-TRANSIT SHIPMENTS (WEEKS)', 21, 20+N, 'FF7A4000']);
+    grpDefs.forEach(([lbl,sc,ec,argb])=>{
+      if(sc<ec) ws.mergeCells(1,sc,1,ec);
+      const cell=ws.getCell(1,sc);
+      cell.value=lbl;
+      cell.fill={type:'pattern',pattern:'solid',fgColor:{argb}};
       cell.font={bold:true,color:{argb:'FFFFFFFF'},size:11,name:'Calibri'};
-      cell.alignment={vertical:'middle',horizontal:'center',wrapText:false};
-      cell.border={bottom:{style:'medium',color:{argb:'FF1F3D70'}}};
+      cell.alignment={vertical:'middle',horizontal:'center'};
     });
 
-    // ── 4. Data rows with alternating colours ──────────────────────────────
+    // ── 7. Row 2: leaf headers ──────────────────────────────────────────────
+    const hdrRow=ws.addRow(leafHdrs); hdrRow.height=30;
+    const leafArgb=ci=>ci<=4?'FF002244':ci<=16?'FF1A4080':ci<=20?'FF1A6A3A':'FF5A3000';
+    hdrRow.eachCell((cell,ci)=>{
+      cell.fill={type:'pattern',pattern:'solid',fgColor:{argb:leafArgb(ci)}};
+      cell.font={bold:true,color:{argb:'FFFFFFFF'},size:10,name:'Calibri'};
+      cell.alignment={vertical:'middle',horizontal:'center',wrapText:true};
+      cell.border={bottom:{style:'medium',color:{argb:'FF000000'}}};
+    });
+
+    // ── 8. Data rows with alternating colours ──────────────────────────────
     dataRows.forEach((rowData,i)=>{
       const row=ws.addRow(rowData);
       const argb=i%2===0?'FFDCE6F1':'FFFFFFFF';
-      row.eachCell({includeEmpty:true},cell=>{
+      row.eachCell({includeEmpty:true},(cell,ci)=>{
         cell.fill={type:'pattern',pattern:'solid',fgColor:{argb}};
         cell.font={name:'Calibri',size:10};
-        cell.alignment={vertical:'middle'};
+        cell.alignment={vertical:'middle',horizontal:ci>4?'right':'left'};
       });
     });
 
-    // ── 5. Freeze header & autofilter ──────────────────────────────────────
-    ws.views=[{state:'frozen',ySplit:1,activeCell:'A2'}];
-    ws.autoFilter={from:{row:1,column:1},to:{row:1,column:numCols}};
+    // ── 9. Freeze top 2 rows; autofilter on leaf header row ────────────────
+    ws.views=[{state:'frozen',ySplit:2,activeCell:'A3'}];
+    ws.autoFilter={from:{row:2,column:1},to:{row:2,column:numCols}};
 
-    // ── 6. Download ────────────────────────────────────────────────────────
+    // ── 10. Download ────────────────────────────────────────────────────────
     const today=new Date().toISOString().slice(0,10);
     const buffer=await wb.xlsx.writeBuffer();
     const blob=new Blob([buffer],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
     const url=URL.createObjectURL(blob);
-    const a=document.createElement('a');
-    a.href=url; a.download=`OPS_ROR_${today}.xlsx`; a.click();
+    const a=document.createElement('a'); a.href=url; a.download=`OPS_ROR_${today}.xlsx`; a.click();
     URL.revokeObjectURL(url);
 
   }finally{
