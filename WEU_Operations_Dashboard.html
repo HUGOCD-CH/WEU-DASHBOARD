@@ -2898,8 +2898,10 @@ function _populateRORCountryDropdown(){
   if(!csel||typeof COUNTRY_GROUPS==='undefined') return;
   csel.innerHTML='<option value="">— All WEU —</option>';
   COUNTRY_GROUPS.forEach(g=>{const o=document.createElement('option');o.value=g.key;o.textContent=g.label;csel.appendChild(o);});
-  // Individual countries: sorted by BO value desc (mirrors Dashboard order), with flag emoji
+  // Individual WEU countries: exclude group members (already represented) and non-WEU (Israel)
+  const _weuExclude=new Set(['ISRAEL']);
   const allCtrys=Object.keys(COUNTRY_OO_MAP||{})
+    .filter(c=>!_CKEY_TO_GROUP[c]&&!_weuExclude.has(c))
     .sort((a,b)=>(COUNTRY_OO_MAP[b]?.bo?.val||0)-(COUNTRY_OO_MAP[a]?.bo?.val||0));
   if(allCtrys.length>0){
     const sep=document.createElement('option');sep.disabled=true;sep.textContent='── Individual Countries ──';csel.appendChild(sep);
