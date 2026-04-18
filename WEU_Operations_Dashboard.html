@@ -2893,22 +2893,24 @@ function generateRORWeekHeaders() {
   container.innerHTML = headerHTML;
 }
 
+function _populateRORCountryDropdown(){
+  const csel=document.getElementById('ror-country');
+  if(!csel||typeof COUNTRY_GROUPS==='undefined') return;
+  csel.innerHTML='<option value="">— All WEU —</option>';
+  COUNTRY_GROUPS.forEach(g=>{const o=document.createElement('option');o.value=g.key;o.textContent=g.label;csel.appendChild(o);});
+  const allCtrys=Object.keys(COUNTRY_OO_MAP||{}).sort();
+  if(allCtrys.length>0){
+    const sep=document.createElement('option');sep.disabled=true;sep.textContent='── Individual Countries ──';csel.appendChild(sep);
+    allCtrys.forEach(c=>{const o=document.createElement('option');o.value=c;o.textContent=c.charAt(0)+c.slice(1).toLowerCase();csel.appendChild(o);});
+  }
+  csel.value=_rorCountryKey;
+}
 function initROR(){
   initRORWeekHeaders();
   const mpgs=[...new Set(ROR_DATA.map(r=>r.MPG).filter(Boolean).filter(m=>m!=='-'))].sort();
   const sel=document.getElementById('ror-mpg');sel.innerHTML='<option value="">All MPGs</option>';
   mpgs.forEach(m=>{const o=document.createElement('option');o.value=m;o.textContent=m;sel.appendChild(o);});
-  const csel=document.getElementById('ror-country');
-  if(csel&&typeof COUNTRY_GROUPS!=='undefined'){
-    csel.innerHTML='<option value="">— All WEU —</option>';
-    COUNTRY_GROUPS.forEach(g=>{const o=document.createElement('option');o.value=g.key;o.textContent=g.label;csel.appendChild(o);});
-    const allCtrys=Object.keys(COUNTRY_OO_MAP||{}).sort();
-    if(allCtrys.length>0){
-      const sep=document.createElement('option');sep.disabled=true;sep.textContent='── Individual Countries ──';csel.appendChild(sep);
-      allCtrys.forEach(c=>{const o=document.createElement('option');o.value=c;o.textContent=c.charAt(0)+c.slice(1).toLowerCase();csel.appendChild(o);});
-    }
-    csel.value=_rorCountryKey;
-  }
+  _populateRORCountryDropdown();
   generateRORWeekHeaders();
   rorFiltered=[...ROR_DATA];renderROR();
 }
@@ -4720,6 +4722,7 @@ async function loadFromFolder(){
         }catch(e){ console.warn('boExtras getFile error', e); failed++; }
       }
       try{ localStorage.setItem('extra_bo_files', JSON.stringify(existing)); }catch(ex){}
+      _populateRORCountryDropdown();
     }
 
     // Store extra INV files — uploaded but not used for dashboard
@@ -4969,6 +4972,7 @@ async function refreshAllFiles(){
             }catch(e){}
           }
           try{ localStorage.setItem('extra_bo_files', JSON.stringify(existing)); }catch(ex){}
+          _populateRORCountryDropdown();
         }
         if(rExtras && rExtras.length > 0){
           // (already saved above)
@@ -5571,6 +5575,7 @@ function checkInvBannerLoaded(){
         }catch(e2){}
       }
       try{ localStorage.setItem('extra_bo_files', JSON.stringify(existing)); }catch(ex){}
+      _populateRORCountryDropdown();
       // Redraw cards now that data is available
       buildCountryCards('','');
       buildInTransitWoCChart('','');
