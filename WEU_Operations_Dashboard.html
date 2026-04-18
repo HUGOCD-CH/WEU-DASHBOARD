@@ -2902,6 +2902,11 @@ function initROR(){
   if(csel&&typeof COUNTRY_GROUPS!=='undefined'){
     csel.innerHTML='<option value="">— All WEU —</option>';
     COUNTRY_GROUPS.forEach(g=>{const o=document.createElement('option');o.value=g.key;o.textContent=g.label;csel.appendChild(o);});
+    const allCtrys=Object.keys(COUNTRY_OO_MAP||{}).sort();
+    if(allCtrys.length>0){
+      const sep=document.createElement('option');sep.disabled=true;sep.textContent='── Individual Countries ──';csel.appendChild(sep);
+      allCtrys.forEach(c=>{const o=document.createElement('option');o.value=c;o.textContent=c.charAt(0)+c.slice(1).toLowerCase();csel.appendChild(o);});
+    }
     csel.value=_rorCountryKey;
   }
   generateRORWeekHeaders();
@@ -2958,11 +2963,14 @@ function renderROR(){
   // Country group lookup
   const _ctryGrp=_rorCountryKey&&typeof COUNTRY_GROUPS!=='undefined'
     ?COUNTRY_GROUPS.find(g=>g.key===_rorCountryKey):null;
-  const _ctryMembers=_ctryGrp?_ctryGrp.members:[];
+  const _ctryActive=!!_rorCountryKey;
+  const _ctryMembers=_ctryGrp?_ctryGrp.members:(_ctryActive?[_rorCountryKey]:[]);
+  const _ctryLabel=_ctryGrp?_ctryGrp.label.replace(/^\S+\s*/,'')
+    :(_ctryActive?_rorCountryKey.charAt(0)+_rorCountryKey.slice(1).toLowerCase():'');
 
   // Per-CFN country aggregation (computed once, used in thead + tbody)
   const _ctryMap={};
-  if(_ctryGrp){
+  if(_ctryActive){
     const qMths=QUARTER_CFG.q4.months;
     const _pStart=new Date(new Date().getFullYear(),0,24);
     const _wksPassed=Math.max(1,(new Date()-_pStart)/(7*24*60*60*1000));
@@ -2983,7 +2991,11 @@ function renderROR(){
         expStock:  boPct!==null?Math.round((r.Stock_EA||0)*boPct):null,
         expShip:   boPct!==null?Math.round((r.Shipments_2wk||0)*boPct):null,
         wklyDem:   Math.round(cDem/_wksPassed*10)/10,
-        expImpact: boPct!==null&&r.BO_Impact_2wk!==null?Math.round((r.BO_Impact_2wk||0)*boPct*100)/100:null,
+        expImpact: r.BO_Impact_2wk!=null ? (
+          r.BO_Dev_2wk!=null&&r.BO_Dev_2wk<0
+            ? Math.round((cBOV||0)*(r.BO_Dev_2wk||0)*100)/100
+            : (boPct!==null?Math.round((r.BO_Impact_2wk||0)*boPct*100)/100:null)
+        ) : null,
         q4Frac:    cFcst>0?cDem/cFcst:null,
       };
     });
@@ -2993,17 +3005,16 @@ function renderROR(){
   const thead=document.getElementById('ror-thead');
   if(thead){
     const N=activeWeekKeys.length;
-    const CSPAN=_ctryGrp?11:0;
+    const CSPAN=_ctryActive?11:0;
     const mdBg='background:#002244;color:#fff;font-size:11px;font-weight:700;text-align:center;position:sticky;top:0;z-index:4;padding:5px 6px;border:1px solid #224';
     const weBg='background:#1a4080;color:#fff;font-size:11px;font-weight:700;text-align:center;position:sticky;top:0;z-index:4;padding:5px 6px;border:1px solid #224';
     const cBg='background:#5a2080;color:#fff;font-size:11px;font-weight:700;text-align:center;position:sticky;top:0;z-index:4;padding:5px 6px;border:1px solid #422';
     const emBg='background:#1a6a3a;color:#fff;font-size:11px;font-weight:700;text-align:center;position:sticky;top:0;z-index:4;padding:5px 6px;border:1px solid #224';
     const itBg='background:#7a4000;color:#fff;font-size:11px;font-weight:700;text-align:center;position:sticky;top:0;z-index:4;padding:5px 6px;border:1px solid #224';
-    const ctryLabel=_ctryGrp?_ctryGrp.label.replace(/^\S+\s*/,''):'';
     const row1=`<tr>
       <th colspan="4" rowspan="2" style="${mdBg}">MASTER DATA</th>
       <th colspan="12" style="${weBg}">WESTERN EUROPE (BO* = BO + PAST DUE)</th>
-      ${_ctryGrp?`<th colspan="${CSPAN}" style="${cBg}">${ctryLabel.toUpperCase()}</th>`:''}
+      ${_ctryActive?`<th colspan="${CSPAN}" style="${cBg}">${_ctryLabel.toUpperCase()}</th>`:''}
       <th colspan="4" style="${emBg}">EMEA — STOCK (EA) available</th>
       ${N>0?`<th colspan="${N}" style="${itBg}">EMEA IN-TRANSIT SHIPMENTS (WEEKS)</th>`:''}
     </tr>`;
@@ -3016,7 +3027,7 @@ function renderROR(){
       return `<th style="${lf(c.key)}" onclick="sortROR('${c.key}')">${c.label}${ind}</th>`;
     }).join('');
     const q4Th=`<th style="${lf('_q4fcst')}">Q4 FCST\nCons. %</th>`;
-    const ctryThs=_ctryGrp?['BO QTY','BO Value\n($)','Past Due','Future Due','OOB',
+    const ctryThs=_ctryActive?['BO QTY','BO Value\n($)','Past Due','Future Due','OOB',
       'BO* QTY\n%','Exp. Stock\n(EA)','Exp. 2wk\nShip.','Avg Wkly\nDemand','Exp. $\nImpact','Q4 FCST\nCons. %']
       .map(l=>`<th style="${cfBg}">${l}</th>`).join(''):'';
     const dcThs=ROR_COLS.slice(15).map(c=>{
@@ -3034,8 +3045,8 @@ function renderROR(){
     const q4e=_q4Map[cfn];
     const q4Pct=q4e&&q4e.fcst>0?Math.round(q4e.dem/q4e.fcst*1000)/10:null;
     const allocClr=r.Heerlen_Allocation==='PRDLOC'?'color:#1e7e34;font-weight:600':'color:#5a7a9a';
-    const cd=_ctryGrp?(_ctryMap[cfnUp]||{}):null;
-    const ctryTds=_ctryGrp?`
+    const cd=_ctryActive?(_ctryMap[cfnUp]||{}):null;
+    const ctryTds=_ctryActive?`
       <td class="num">${fmt(cd.bo)}</td>
       <td class="num">${cd.boVal!=null?fmtCur(cd.boVal):'—'}</td>
       <td class="num">${fmt(cd.pd)}</td>
@@ -3096,9 +3107,12 @@ async function exportRORToExcel(){
     // ── 2b. Country group aggregation (mirrors renderROR logic) ───────────
     const _xCtryGrp=_rorCountryKey&&typeof COUNTRY_GROUPS!=='undefined'
       ?COUNTRY_GROUPS.find(g=>g.key===_rorCountryKey):null;
-    const _xCtryMembers=_xCtryGrp?_xCtryGrp.members:[];
+    const _xCtryActive=!!_rorCountryKey;
+    const _xCtryMembers=_xCtryGrp?_xCtryGrp.members:(_xCtryActive?[_rorCountryKey]:[]);
+    const _xCtryLabel=_xCtryGrp?_xCtryGrp.label.replace(/^\S+\s*/,'')
+      :(_xCtryActive?_rorCountryKey.charAt(0)+_rorCountryKey.slice(1).toLowerCase():'');
     const _xCtryMap={};
-    if(_xCtryGrp){
+    if(_xCtryActive){
       const qMths=QUARTER_CFG.q4.months;
       const _pStart=new Date(new Date().getFullYear(),0,24);
       const _wksPassed=Math.max(1,(new Date()-_pStart)/(7*24*60*60*1000));
@@ -3118,17 +3132,21 @@ async function exportRORToExcel(){
           expStock:  boPct!==null?Math.round((r.Stock_EA||0)*boPct):null,
           expShip:   boPct!==null?Math.round((r.Shipments_2wk||0)*boPct):null,
           wklyDem:   Math.round(cDem/_wksPassed*10)/10,
-          expImpact: boPct!==null&&r.BO_Impact_2wk!=null?Math.round((r.BO_Impact_2wk||0)*boPct*100)/100:null,
+          expImpact: r.BO_Impact_2wk!=null ? (
+            r.BO_Dev_2wk!=null&&r.BO_Dev_2wk<0
+              ? Math.round((cBOV||0)*(r.BO_Dev_2wk||0)*100)/100
+              : (boPct!==null?Math.round((r.BO_Impact_2wk||0)*boPct*100)/100:null)
+          ) : null,
           q4Frac:    cFcst>0?cDem/cFcst:null,
         };
       });
     }
-    const CTRY_COLS=11; // country column count when group selected
+    const CTRY_COLS=11; // country column count when active
 
     // ── 3. Column layout matching display ──────────────────────────────────
     // MASTER DATA (4) | WE (12) | [COUNTRY (11)] | EMEA STOCK (4) | IN-TRANSIT (N)
     const _fl=s=>s.replace(/\n/g,' ');
-    const ctryLeafHdrs=_xCtryGrp?[
+    const ctryLeafHdrs=_xCtryActive?[
       'BO QTY','BO Value ($)','Past Due','Future Due','OOB',
       'BO* QTY %','Exp. Stock (EA)','Exp. 2wk Ship.','Avg Wkly Demand','Exp. $ Impact','Q4 FCST Cons. %'
     ]:[];
@@ -3140,7 +3158,7 @@ async function exportRORToExcel(){
       ...activeWkKeys.map(k=>WEEK_LABELS[k]||k)      // N weeks
     ];
     const numCols=leafHdrs.length;
-    const ctryWidths=_xCtryGrp?[9,14,9,9,9,10,11,11,11,14,12]:[];
+    const ctryWidths=_xCtryActive?[9,14,9,9,9,10,11,11,11,14,12]:[];
     const colWidths=[24,13,38,13, 9,14,11,11,9,11,15,13,10,12,18,14, ...ctryWidths, 11,11,11,11, ...activeWkKeys.map(()=>11)];
 
     // ── 4. Data rows (exclude blank/Grand Total CFN rows) ──────────────────
@@ -3150,8 +3168,8 @@ async function exportRORToExcel(){
       const cfnUp=cfn.toUpperCase();
       const q4e=_xq4[cfn];
       const q4Frac=q4e&&q4e.fcst>0?q4e.dem/q4e.fcst:null;
-      const cd=_xCtryGrp?(_xCtryMap[cfnUp]||{}):null;
-      const ctryVals=_xCtryGrp?[
+      const cd=_xCtryActive?(_xCtryMap[cfnUp]||{}):null;
+      const ctryVals=_xCtryActive?[
         cd.bo??null, cd.boVal??null, cd.pd??null, cd.fd??null, cd.oob??null,
         cd.boPct??null, cd.expStock??null, cd.expShip??null, cd.wklyDem??null,
         cd.expImpact??null, cd.q4Frac??null,
@@ -3170,13 +3188,14 @@ async function exportRORToExcel(){
     });
 
     // numFmt per column index (0-based)
-    // Fixed cols: 0-15 (MASTER DATA + WE + Q4)
+    // Fixed cols 0-15 (MASTER DATA + WE + Q4); country cols 11-wide; DC + week cols
     const _fixedFmt=[null,null,null,null,'#,##0','_($* #,##0.00_)','#,##0','#,##0','#,##0','#,##0','#,##0','#,##0.0','0.0','0.0%','_($* #,##0.00_)','0.0%'];
-    // Country cols (11): int, currency, int, int, int, pct, int, int, dec, currency, pct
-    const _ctryFmt=_xCtryGrp?['#,##0','_($* #,##0.00_)','#,##0','#,##0','#,##0','0.0%','#,##0','#,##0','#,##0.0','_($* #,##0.00_)','0.0%']:[];
-    // DC + week cols
+    const _ctryFmt=_xCtryActive?['#,##0','_($* #,##0.00_)','#,##0','#,##0','#,##0','0.0%','#,##0','#,##0','#,##0.0','_($* #,##0.00_)','0.0%']:[];
     const _dcFmt=['#,##0','#,##0','#,##0','#,##0'];
     const COL_FMT=[..._fixedFmt,..._ctryFmt,..._dcFmt];
+    // Cols where positive=red, negative=green (1-based): BO_Dev_2wk=14, BO_Impact_2wk=15, country Exp.$Impact=26
+    const _signedCols=new Set([14,15]);
+    if(_xCtryActive) _signedCols.add(26);
 
     // ── 5. Workbook & worksheet ─────────────────────────────────────────────
     const wb=new ExcelJS.Workbook();
@@ -3187,18 +3206,13 @@ async function exportRORToExcel(){
     // ── 6. Row 1: group headers (merged, color-coded) ───────────────────────
     ws.addRow([]);
     const grpRow=ws.getRow(1); grpRow.height=18;
-    // Column positions (1-based):
-    //   MASTER DATA: 1-4, WE: 5-16, [COUNTRY: 17-(16+CTRY)], DC: (17+CTRY)-(20+CTRY), WEEKS: (21+CTRY)+
-    const _dcStart=17+(_xCtryGrp?CTRY_COLS:0);
+    const _dcStart=17+(_xCtryActive?CTRY_COLS:0);
     const _wkStart=_dcStart+4;
     const grpDefs=[
       ['MASTER DATA',                           1,   4,  'FF002244'],
       ['WESTERN EUROPE (BO* = BO + PAST DUE)', 5,  16, 'FF1A4080'],
     ];
-    if(_xCtryGrp){
-      const ctryLabel=_xCtryGrp.label.replace(/^\S+\s*/,'');
-      grpDefs.push([ctryLabel.toUpperCase(), 17, 16+CTRY_COLS, 'FF5A2080']);
-    }
+    if(_xCtryActive) grpDefs.push([_xCtryLabel.toUpperCase(), 17, 16+CTRY_COLS, 'FF5A2080']);
     grpDefs.push(['EMEA — STOCK (EA) available', _dcStart, _dcStart+3, 'FF1A6A3A']);
     if(N>0) grpDefs.push(['EMEA IN-TRANSIT SHIPMENTS (WEEKS)', _wkStart, _wkStart+N-1, 'FF7A4000']);
     grpDefs.forEach(([lbl,sc,ec,argb])=>{
@@ -3215,7 +3229,7 @@ async function exportRORToExcel(){
     const leafArgb=ci=>{
       if(ci<=4) return 'FF002244';
       if(ci<=16) return 'FF1A4080';
-      if(_xCtryGrp&&ci<=16+CTRY_COLS) return 'FF5A2080';
+      if(_xCtryActive&&ci<=16+CTRY_COLS) return 'FF5A2080';
       if(ci<=_dcStart+3) return 'FF1A6A3A';
       return 'FF5A3000';
     };
@@ -3226,17 +3240,21 @@ async function exportRORToExcel(){
       cell.border={bottom:{style:'medium',color:{argb:'FF000000'}}};
     });
 
-    // ── 8. Data rows with alternating colours & number formats ────────────
+    // ── 8. Data rows with alternating colours, number formats, sign colours ─
     dataRows.forEach((rowData,i)=>{
       const row=ws.addRow(rowData);
       const argb=i%2===0?'FFDCE6F1':'FFFFFFFF';
       row.eachCell({includeEmpty:true},(cell,ci)=>{
         cell.fill={type:'pattern',pattern:'solid',fgColor:{argb}};
-        cell.font={name:'Calibri',size:10};
         const isNum=ci>4;
         cell.alignment={vertical:'middle',horizontal:isNum?'right':'left'};
         const fmt=COL_FMT[ci-1]??(ci>=_wkStart?'#,##0':null);
         if(fmt&&cell.value!==null&&cell.value!=='') cell.numFmt=fmt;
+        // positive=red, negative=green for signed columns
+        const v=cell.value;
+        const fontColor=(_signedCols.has(ci)&&typeof v==='number'&&v!==0)
+          ?{argb:v>0?'FFCC0000':'FF1E7E34'}:{argb:'FF000000'};
+        cell.font={name:'Calibri',size:10,color:fontColor};
       });
     });
 
@@ -3246,11 +3264,11 @@ async function exportRORToExcel(){
 
     // ── 10. Download ────────────────────────────────────────────────────────
     const today=new Date().toISOString().slice(0,10);
-    const ctryFileSuffix=_xCtryGrp?`_${_xCtryGrp.label.replace(/[^a-zA-Z0-9]/g,'_')}`:'_WEU';
+    const _fileLabel=_xCtryActive?_xCtryLabel.replace(/\s+/g,'_'):'WEU';
     const buffer=await wb.xlsx.writeBuffer();
     const blob=new Blob([buffer],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
     const url=URL.createObjectURL(blob);
-    const a=document.createElement('a'); a.href=url; a.download=`OPS_ROR${ctryFileSuffix}_${today}.xlsx`; a.click();
+    const a=document.createElement('a'); a.href=url; a.download=`${today} OPS_ROR_${_fileLabel}.xlsx`; a.click();
     URL.revokeObjectURL(url);
 
   }finally{
