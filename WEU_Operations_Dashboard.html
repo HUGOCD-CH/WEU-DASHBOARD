@@ -3088,18 +3088,23 @@ async function exportRORToExcel(){
     const dataRows=rorFiltered.map(r=>{
       const cfn=r.CFN||'';
       const q4e=_xq4[cfn];
-      const q4Pct=q4e&&q4e.fcst>0?Math.round(q4e.dem/q4e.fcst*1000)/10:null;
+      // Store as fraction so Excel's 0.0% format renders correctly
+      const q4Frac=q4e&&q4e.fcst>0?q4e.dem/q4e.fcst:null;
       return[
         r.MPG||'', cfn, r.Description||'', r.Heerlen_Allocation||'',
         r.BO_QTY??null, r.BO_Value??null,
         r.PastDue_QTY??null, r.FutureDue_QTY??null, r.OOB_QTY??null,
         r.Stock_EA??null, r.Shipments_2wk??null, r.Weekly_Demand??null,
         r.WoC??null, r.BO_Dev_2wk??null, r.BO_Impact_2wk??null,
-        q4Pct??null,
+        q4Frac??null,
         r.DC_Heerlen??null, r.DC_Rolo??null, r.DC_Alcala??null, r.DC_Kits??null,
         ...activeWkKeys.map(k=>r[k]??null)
       ];
     });
+
+    // numFmt per column index (0-based); undefined = no format (text)
+    // Col:  0    1    2    3     4         5              6        7        8       9         10        11         12     13       14             15       16-19     20+
+    const COL_FMT=[null,null,null,null, '#,##0','_($* #,##0.00_)', '#,##0', '#,##0', '#,##0', '#,##0', '#,##0', '#,##0.0', '0.0', '0.0%', '_($* #,##0.00_)', '0.0%'];
 
     // ── 5. Workbook & worksheet ─────────────────────────────────────────────
     const wb=new ExcelJS.Workbook();
@@ -3135,14 +3140,17 @@ async function exportRORToExcel(){
       cell.border={bottom:{style:'medium',color:{argb:'FF000000'}}};
     });
 
-    // ── 8. Data rows with alternating colours ──────────────────────────────
+    // ── 8. Data rows with alternating colours & number formats ────────────
     dataRows.forEach((rowData,i)=>{
       const row=ws.addRow(rowData);
       const argb=i%2===0?'FFDCE6F1':'FFFFFFFF';
       row.eachCell({includeEmpty:true},(cell,ci)=>{
         cell.fill={type:'pattern',pattern:'solid',fgColor:{argb}};
         cell.font={name:'Calibri',size:10};
-        cell.alignment={vertical:'middle',horizontal:ci>4?'right':'left'};
+        const isNum=ci>4;
+        cell.alignment={vertical:'middle',horizontal:isNum?'right':'left'};
+        const fmt=COL_FMT[ci-1]??(ci>20?'#,##0':null); // week cols = integers
+        if(fmt&&cell.value!==null&&cell.value!=='') cell.numFmt=fmt;
       });
     });
 
