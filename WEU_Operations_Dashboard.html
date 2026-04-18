@@ -3084,8 +3084,9 @@ async function exportRORToExcel(){
     const numCols=leafHdrs.length;
     const colWidths=[24,13,38,13, 9,14,11,11,9,11,15,13,10,12,18,14, 11,11,11,11, ...activeWkKeys.map(()=>11)];
 
-    // ── 4. Data rows ────────────────────────────────────────────────────────
-    const dataRows=rorFiltered.map(r=>{
+    // ── 4. Data rows (exclude blank/Grand Total CFN rows) ──────────────────
+    const _validRows=rorFiltered.filter(r=>{ const c=(r.CFN||'').trim(); return c&&!/^grand\s*total$/i.test(c); });
+    const dataRows=_validRows.map(r=>{
       const cfn=r.CFN||'';
       const q4e=_xq4[cfn];
       // Store as fraction so Excel's 0.0% format renders correctly
@@ -3959,6 +3960,9 @@ function processBO(file){
           newAdded++;
         }
       });
+
+      // Remove Grand Total / empty-CFN rows that may exist in embedded data
+      ROR_DATA=ROR_DATA.filter(r=>{ const c=(r.CFN||'').trim(); return c&&!/^grand\s*total$/i.test(c); });
 
       // Refresh dashboard panels
       rorFiltered=[...ROR_DATA]; rorPage=1;
