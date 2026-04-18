@@ -2898,10 +2898,19 @@ function _populateRORCountryDropdown(){
   if(!csel||typeof COUNTRY_GROUPS==='undefined') return;
   csel.innerHTML='<option value="">— All WEU —</option>';
   COUNTRY_GROUPS.forEach(g=>{const o=document.createElement('option');o.value=g.key;o.textContent=g.label;csel.appendChild(o);});
-  const allCtrys=Object.keys(COUNTRY_OO_MAP||{}).sort();
+  // Individual WEU countries: exclude group members (already represented) and non-WEU (Israel)
+  const _weuExclude=new Set(['ISRAEL']);
+  const allCtrys=Object.keys(COUNTRY_OO_MAP||{})
+    .filter(c=>!_CKEY_TO_GROUP[c]&&!_weuExclude.has(c))
+    .sort((a,b)=>(COUNTRY_OO_MAP[b]?.bo?.val||0)-(COUNTRY_OO_MAP[a]?.bo?.val||0));
   if(allCtrys.length>0){
     const sep=document.createElement('option');sep.disabled=true;sep.textContent='── Individual Countries ──';csel.appendChild(sep);
-    allCtrys.forEach(c=>{const o=document.createElement('option');o.value=c;o.textContent=c.charAt(0)+c.slice(1).toLowerCase();csel.appendChild(o);});
+    allCtrys.forEach(c=>{
+      const o=document.createElement('option');
+      o.value=c;
+      o.textContent=_cflag(c)+' '+c.charAt(0)+c.slice(1).toLowerCase();
+      csel.appendChild(o);
+    });
   }
   csel.value=_rorCountryKey;
 }
@@ -2968,7 +2977,7 @@ function renderROR(){
   const _ctryActive=!!_rorCountryKey;
   const _ctryMembers=_ctryGrp?_ctryGrp.members:(_ctryActive?[_rorCountryKey]:[]);
   const _ctryLabel=_ctryGrp?_ctryGrp.label.replace(/^\S+\s*/,'')
-    :(_ctryActive?_rorCountryKey.charAt(0)+_rorCountryKey.slice(1).toLowerCase():'');
+    :(_ctryActive?_cflag(_rorCountryKey)+' '+_rorCountryKey.charAt(0)+_rorCountryKey.slice(1).toLowerCase():'');
 
   // Per-CFN country aggregation (computed once, used in thead + tbody)
   const _ctryMap={};
