@@ -2983,7 +2983,11 @@ function renderROR(){
         expStock:  boPct!==null?Math.round((r.Stock_EA||0)*boPct):null,
         expShip:   boPct!==null?Math.round((r.Shipments_2wk||0)*boPct):null,
         wklyDem:   Math.round(cDem/_wksPassed*10)/10,
-        expImpact: boPct!==null&&r.BO_Impact_2wk!==null?Math.round((r.BO_Impact_2wk||0)*boPct*100)/100:null,
+        expImpact: r.BO_Impact_2wk!=null ? (
+          r.BO_Dev_2wk!=null&&r.BO_Dev_2wk<0
+            ? Math.round((cBOV||0)*(r.BO_Dev_2wk||0)*100)/100
+            : (boPct!==null?Math.round((r.BO_Impact_2wk||0)*boPct*100)/100:null)
+        ) : null,
         q4Frac:    cFcst>0?cDem/cFcst:null,
       };
     });
@@ -3118,7 +3122,11 @@ async function exportRORToExcel(){
           expStock:  boPct!==null?Math.round((r.Stock_EA||0)*boPct):null,
           expShip:   boPct!==null?Math.round((r.Shipments_2wk||0)*boPct):null,
           wklyDem:   Math.round(cDem/_wksPassed*10)/10,
-          expImpact: boPct!==null&&r.BO_Impact_2wk!=null?Math.round((r.BO_Impact_2wk||0)*boPct*100)/100:null,
+          expImpact: r.BO_Impact_2wk!=null ? (
+            r.BO_Dev_2wk!=null&&r.BO_Dev_2wk<0
+              ? Math.round((cBOV||0)*(r.BO_Dev_2wk||0)*100)/100
+              : (boPct!==null?Math.round((r.BO_Impact_2wk||0)*boPct*100)/100:null)
+          ) : null,
           q4Frac:    cFcst>0?cDem/cFcst:null,
         };
       });
