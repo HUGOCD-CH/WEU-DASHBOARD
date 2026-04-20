@@ -1864,7 +1864,14 @@ function _buildFcstDemandCharts(q, mpgF, exactCFNs){
   const _qHasCur=_qCMs.includes(_nowM);
   let wShipT=null, cShipT=null;
   if(_qHasCur){
-    const wBoQty=(OO_TOTALS.bo||{qty:0}).qty;
+    // When a CFN filter is active, restrict BO qty to matching CFNs (same logic as the table)
+    let wBoQty;
+    if(cfnFilter && typeof ROR_DATA!=='undefined'){
+      wBoQty=0;
+      ROR_DATA.forEach(r=>{ if(cfnFilter.has((r.CFN||'').trim().toUpperCase())) wBoQty+=(r.BO_QTY||0); });
+    } else {
+      wBoQty=(OO_TOTALS.bo||{qty:0}).qty;
+    }
     wShipT=wFcstActiveT>0?Math.round((wDT-wBoQty)/wFcstActiveT*100*10)/10:null;
     const selK=_selectedRegionKey;
     let cBoQty=0;
@@ -1872,14 +1879,29 @@ function _buildFcstDemandCharts(q, mpgF, exactCFNs){
     else if(selK){
       const _sGrp=(typeof COUNTRY_GROUPS!=='undefined')&&COUNTRY_GROUPS.find(g=>g.key===selK);
       if(_sGrp){
-        // Sum BO qty across all group members
-        _sGrp.members.forEach(m=>{ cBoQty+=(COUNTRY_OO_MAP[m]?.bo?.qty||0); });
+        if(cfnFilter && typeof COUNTRY_BO_MAP!=='undefined'){
+          _sGrp.members.forEach(m=>{
+            const cm=COUNTRY_BO_MAP[m];
+            if(cm) Object.entries(cm.cfnQty||{}).forEach(([cfn,qty])=>{ if(cfnFilter.has(cfn.trim().toUpperCase())) cBoQty+=(qty||0); });
+            else cBoQty+=(COUNTRY_OO_MAP[m]?.bo?.qty||0);
+          });
+        } else {
+          _sGrp.members.forEach(m=>{ cBoQty+=(COUNTRY_OO_MAP[m]?.bo?.qty||0); });
+        }
       } else {
-        cBoQty=(COUNTRY_OO_MAP[selK]?.bo?.qty)||0;
+        if(cfnFilter && typeof COUNTRY_BO_MAP!=='undefined' && COUNTRY_BO_MAP[selK]){
+          Object.entries(COUNTRY_BO_MAP[selK].cfnQty||{}).forEach(([cfn,qty])=>{ if(cfnFilter.has(cfn.trim().toUpperCase())) cBoQty+=(qty||0); });
+        } else {
+          cBoQty=(COUNTRY_OO_MAP[selK]?.bo?.qty)||0;
+        }
       }
     } else {
-      cBoQty=COUNTRY_OO_MAP['CEMA']?(COUNTRY_OO_MAP['CEMA'].bo||{qty:0}).qty
-                                    :Object.values(CEMA_BO_QTY_MAP).reduce((s,v)=>s+(v||0),0);
+      if(cfnFilter && typeof CEMA_BO_QTY_MAP!=='undefined'){
+        Object.entries(CEMA_BO_QTY_MAP).forEach(([cfn,qty])=>{ if(cfnFilter.has(cfn.trim().toUpperCase())) cBoQty+=(parseFloat(qty)||0); });
+      } else {
+        cBoQty=COUNTRY_OO_MAP['CEMA']?(COUNTRY_OO_MAP['CEMA'].bo||{qty:0}).qty
+                                      :Object.values(CEMA_BO_QTY_MAP).reduce((s,v)=>s+(v||0),0);
+      }
     }
     cShipT=cFcstActiveT>0?Math.round((cDT-cBoQty)/cFcstActiveT*100*10)/10:null;
   }
