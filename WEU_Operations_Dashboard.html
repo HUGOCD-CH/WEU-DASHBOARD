@@ -3273,7 +3273,39 @@ async function exportRORToExcel(){
     ws.views=[{state:'frozen',ySplit:2,activeCell:'A3'}];
     ws.autoFilter={from:{row:2,column:1},to:{row:2,column:numCols}};
 
-    // ── 10. Download ────────────────────────────────────────────────────────
+    // ── 10. In-Transit (STO) sheet ─────────────────────────────────────────
+    const wsSTO=wb.addWorksheet('In-Transit (STO)');
+    const stoHdrArgb='FF002244';
+    const stoHdrs=['CFN','Material #','QTY (EA)','Req. Delivery','Carrier','Tracking #','Priority','Status','Expected Date'];
+    const stoColWidths=[16,20,12,22,20,22,12,22,22];
+    wsSTO.columns=stoHdrs.map((h,i)=>({key:`s${i}`,width:stoColWidths[i]||15}));
+    const stoHdrRow=wsSTO.addRow(stoHdrs);
+    stoHdrRow.height=24;
+    stoHdrRow.eachCell(cell=>{
+      cell.fill={type:'pattern',pattern:'solid',fgColor:{argb:stoHdrArgb}};
+      cell.font={bold:true,color:{argb:'FFFFFFFF'},size:10,name:'Calibri'};
+      cell.alignment={vertical:'middle',horizontal:'center',wrapText:false};
+      cell.border={bottom:{style:'medium',color:{argb:'FF000000'}}};
+    });
+    const _fmtDt=v=>{if(!v)return'—';const d=new Date(v);return isNaN(d)?String(v):d.toISOString().slice(0,10);};
+    STO_DATA.forEach((r,i)=>{
+      const row=wsSTO.addRow([
+        r.CFN||'', r.Material_Nr||'', r.Qty??null,
+        _fmtDt(r.Req_Delivery_Date), r.Carrier||'', r.Tracking_Nr||'',
+        r.Priority_Desc||'', r.Delivery_Status||'', _fmtDt(r.Expected_Date),
+      ]);
+      const argb=i%2===0?'FFDCE6F1':'FFFFFFFF';
+      row.eachCell({includeEmpty:true},(cell,ci)=>{
+        cell.fill={type:'pattern',pattern:'solid',fgColor:{argb}};
+        cell.font={name:'Calibri',size:10};
+        cell.alignment={vertical:'middle',horizontal:ci===3?'right':'left'};
+        if(ci===3&&cell.value!==null) cell.numFmt='#,##0';
+      });
+    });
+    wsSTO.views=[{state:'frozen',ySplit:1,activeCell:'A2'}];
+    wsSTO.autoFilter={from:{row:1,column:1},to:{row:1,column:stoHdrs.length}};
+
+    // ── 11. Download ────────────────────────────────────────────────────────
     const today=new Date().toISOString().slice(0,10);
     const _fileLabel=_xCtryActive?_xCtryLabel.replace(/\s+/g,'_'):'WEU';
     const buffer=await wb.xlsx.writeBuffer();
