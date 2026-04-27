@@ -2849,6 +2849,7 @@ function clearGlobalSearch(){
 // ===================== BACKORDERS =====================
 let rorFiltered=[...ROR_DATA],rorPage=1,rorSortCol='BO_Value',rorSortDir=-1;
 let _rorCountryKey=''; // '' = WEU only; group key e.g. 'FRANCE_GROUP' when selected
+let _rorCtryMap={}; // per-CFN country aggregation, rebuilt in filterROR before sort
 
 // Fixed column definitions for the sortable ROR thead
 const ROR_COLS=[
@@ -2934,16 +2935,55 @@ function filterROR(){
   });
   // Augment with computed WoC (recalculated here so it reflects latest Weekly_Demand)
   rorFiltered.forEach(r=>{ r.WoC=r.Weekly_Demand>0?Math.round(r.Stock_EA/r.Weekly_Demand*10)/10:null; });
+  // Rebuild country map (needed for country-col sort)
+  _buildRorCtryMap();
   // Column sort (null values sink to bottom)
+  const _cSortFld={_cBO:'bo',_cBOV:'boVal',_cPD:'pd',_cFD:'fd',_cOOB:'oob',
+    _cBoPct:'boPct',_cStock:'expStock',_cShip:'expShip',_cWkly:'wklyDem',_cImpact:'expImpact',_cQ4:'q4Frac'};
   if(rorSortCol){
     rorFiltered.sort((a,b)=>{
-      const av=a[rorSortCol], bv=b[rorSortCol];
+      const cf=_cSortFld[rorSortCol];
+      const av=cf?_rorCtryMap[(a.CFN||'').toUpperCase()]?.[cf]:a[rorSortCol];
+      const bv=cf?_rorCtryMap[(b.CFN||'').toUpperCase()]?.[cf]:b[rorSortCol];
       const an=av===null||av===undefined, bn=bv===null||bv===undefined;
       if(an&&bn)return 0; if(an)return 1; if(bn)return -1;
       return rorSortDir*(typeof av==='string'?av.localeCompare(bv):av-bv);
     });
   }
   renderROR();
+}
+function _buildRorCtryMap(){
+  _rorCtryMap={};
+  if(!_rorCountryKey||typeof COUNTRY_OO_MAP==='undefined') return;
+  const _cGrp=typeof COUNTRY_GROUPS!=='undefined'?COUNTRY_GROUPS.find(g=>g.key===_rorCountryKey):null;
+  const _cMembers=_cGrp?_cGrp.members:[_rorCountryKey];
+  if(!_cMembers.length) return;
+  const qMths=QUARTER_CFG.q4.months;
+  const _pStart=new Date(new Date().getFullYear(),0,24);
+  const _wksPassed=Math.max(1,(new Date()-_pStart)/(7*24*60*60*1000));
+  rorFiltered.forEach(r=>{
+    const cfn=(r.CFN||'').toUpperCase();
+    if(_rorCtryMap[cfn]) return;
+    const sum=(cat,fld)=>_cMembers.reduce((s,m)=>s+(COUNTRY_OO_MAP[m]?.[cat]?.[fld]?.[cfn]||0),0);
+    const cBO=sum('bo','cfnQty'),cBOV=sum('bo','cfnVal');
+    const cPD=sum('pastdue','cfnQty'),cFD=sum('future','cfnQty'),cOOB=sum('total','cfnQty');
+    const weuBOPD=(r.BO_QTY||0)+(r.PastDue_QTY||0);
+    const boPct=weuBOPD>0?(cBO+cPD)/weuBOPD:null;
+    const cDem=_cMembers.reduce((s,m)=>s+qMths.reduce((ss,mn)=>ss+(COUNTRY_FCST_MAP[m]?.[mn]?.cfnDemand?.[cfn]||0),0),0);
+    const cFcst=_cMembers.reduce((s,m)=>s+qMths.reduce((ss,mn)=>ss+(COUNTRY_FCST_MAP[m]?.[mn]?.cfnFcst?.[cfn]||0),0),0);
+    _rorCtryMap[cfn]={
+      bo:cBO,boVal:cBOV,pd:cPD,fd:cFD,oob:cOOB,boPct,
+      expStock:  boPct!==null?Math.round((r.Stock_EA||0)*boPct):null,
+      expShip:   boPct!==null?Math.round((r.Shipments_2wk||0)*boPct):null,
+      wklyDem:   Math.round(cDem/_wksPassed*10)/10,
+      expImpact: r.BO_Impact_2wk!=null?(
+        r.BO_Dev_2wk!=null&&r.BO_Dev_2wk<0
+          ?Math.round((cBOV||0)*(r.BO_Dev_2wk||0)*100)/100
+          :(boPct!==null?Math.round((r.BO_Impact_2wk||0)*boPct*100)/100:null)
+      ):null,
+      q4Frac:    cFcst>0?cDem/cFcst:null,
+    };
+  });
 }
 function renderROR(){
   const s=(rorPage-1)*PAGE_SIZE;
@@ -2979,38 +3019,7 @@ function renderROR(){
   const _ctryLabel=_ctryGrp?_ctryGrp.label.replace(/^\S+\s*/,'')
     :(_ctryActive?_cflag(_rorCountryKey)+' '+_rorCountryKey.charAt(0)+_rorCountryKey.slice(1).toLowerCase():'');
 
-  // Per-CFN country aggregation (computed once, used in thead + tbody)
-  const _ctryMap={};
-  if(_ctryActive){
-    const qMths=QUARTER_CFG.q4.months;
-    const _pStart=new Date(new Date().getFullYear(),0,24);
-    const _wksPassed=Math.max(1,(new Date()-_pStart)/(7*24*60*60*1000));
-    rorFiltered.forEach(r=>{
-      const cfn=(r.CFN||'').toUpperCase();
-      if(_ctryMap[cfn]) return;
-      const sum=(cat,fld)=>_ctryMembers.reduce((s,m)=>s+(COUNTRY_OO_MAP[m]?.[cat]?.[fld]?.[cfn]||0),0);
-      const cBO=sum('bo','cfnQty'), cBOV=sum('bo','cfnVal');
-      const cPD=sum('pastdue','cfnQty'), cFD=sum('future','cfnQty');
-      const cOOB=sum('total','cfnQty');
-      const weuBOPD=(r.BO_QTY||0)+(r.PastDue_QTY||0);
-      const cBOPD=cBO+cPD;
-      const boPct=weuBOPD>0?cBOPD/weuBOPD:null;
-      const cDem=_ctryMembers.reduce((s,m)=>s+qMths.reduce((ss,mn)=>ss+(COUNTRY_FCST_MAP[m]?.[mn]?.cfnDemand?.[cfn]||0),0),0);
-      const cFcst=_ctryMembers.reduce((s,m)=>s+qMths.reduce((ss,mn)=>ss+(COUNTRY_FCST_MAP[m]?.[mn]?.cfnFcst?.[cfn]||0),0),0);
-      _ctryMap[cfn]={
-        bo:cBO,boVal:cBOV,pd:cPD,fd:cFD,oob:cOOB,boPct,
-        expStock:  boPct!==null?Math.round((r.Stock_EA||0)*boPct):null,
-        expShip:   boPct!==null?Math.round((r.Shipments_2wk||0)*boPct):null,
-        wklyDem:   Math.round(cDem/_wksPassed*10)/10,
-        expImpact: r.BO_Impact_2wk!=null ? (
-          r.BO_Dev_2wk!=null&&r.BO_Dev_2wk<0
-            ? Math.round((cBOV||0)*(r.BO_Dev_2wk||0)*100)/100
-            : (boPct!==null?Math.round((r.BO_Impact_2wk||0)*boPct*100)/100:null)
-        ) : null,
-        q4Frac:    cFcst>0?cDem/cFcst:null,
-      };
-    });
-  }
+  // Country aggregation already built by filterROR() into _rorCtryMap
 
   // 2-row grouped thead
   const thead=document.getElementById('ror-thead');
@@ -3031,16 +3040,22 @@ function renderROR(){
     </tr>`;
     const lf=k=>`background:${rorSortCol===k?'#0a4a8a':'#003366'};color:#fff;cursor:pointer;user-select:none;padding:5px 6px;font-size:10px;white-space:pre-line;text-align:center;position:sticky;top:26px;z-index:3;border:1px solid #224`;
     const dfBg=`background:#1a6a3a;color:#fff;cursor:pointer;user-select:none;padding:5px 6px;font-size:10px;white-space:pre-line;text-align:center;position:sticky;top:26px;z-index:3;border:1px solid #1a6a3a`;
-    const cfBg=`background:#5a2080;color:#fff;padding:5px 6px;font-size:10px;white-space:pre-line;text-align:center;position:sticky;top:26px;z-index:3;border:1px solid #422`;
+    const cf=k=>`background:${rorSortCol===k?'#3a1060':'#5a2080'};color:#fff;cursor:pointer;user-select:none;padding:5px 6px;font-size:10px;white-space:pre-line;text-align:center;position:sticky;top:26px;z-index:3;border:1px solid #422`;
     const wfBg=`background:#5a3000;color:#fff;padding:5px 6px;font-size:10px;white-space:nowrap;text-align:center;position:sticky;top:26px;z-index:3`;
     const weThs=ROR_COLS.slice(4,15).map(c=>{
       const ind=rorSortCol===c.key?(rorSortDir>0?' ▲':' ▼'):'';
       return `<th style="${lf(c.key)}" onclick="sortROR('${c.key}')">${c.label}${ind}</th>`;
     }).join('');
-    const q4Th=`<th style="${lf('_q4fcst')}">Q4 FCST\nCons. %</th>`;
-    const ctryThs=_ctryActive?['BO QTY','BO Value\n($)','Past Due','Future Due','OOB',
-      'BO* QTY\n%','Exp. Stock\n(EA)','Exp. 2wk\nShip.','Avg Wkly\nDemand','Exp. $\nImpact','Q4 FCST\nCons. %']
-      .map(l=>`<th style="${cfBg}">${l}</th>`).join(''):'';
+    const q4Th=`<th style="${lf('_q4fcst')}" onclick="sortROR('_q4fcst')">Q4 FCST\nCons. %${rorSortCol==='_q4fcst'?(rorSortDir>0?' ▲':' ▼'):''}</th>`;
+    const _ctryColDefs=_ctryActive?[
+      ['BO QTY','_cBO'],['BO Value\n($)','_cBOV'],['Past Due','_cPD'],['Future Due','_cFD'],['OOB','_cOOB'],
+      ['BO* QTY\n%','_cBoPct'],['Exp. Stock\n(EA)','_cStock'],['Exp. 2wk\nShip.','_cShip'],
+      ['Avg Wkly\nDemand','_cWkly'],['Exp. $\nImpact','_cImpact'],['Q4 FCST\nCons. %','_cQ4']
+    ]:[];
+    const ctryThs=_ctryColDefs.map(([l,k])=>{
+      const ind=rorSortCol===k?(rorSortDir>0?' ▲':' ▼'):'';
+      return `<th style="${cf(k)}" onclick="sortROR('${k}')">${l}${ind}</th>`;
+    }).join('');
     const dcThs=ROR_COLS.slice(15).map(c=>{
       const ind=rorSortCol===c.key?(rorSortDir>0?' ▲':' ▼'):'';
       return `<th style="${dfBg}" onclick="sortROR('${c.key}')">${c.label}${ind}</th>`;
@@ -3056,7 +3071,7 @@ function renderROR(){
     const q4e=_q4Map[cfn];
     const q4Pct=q4e&&q4e.fcst>0?Math.round(q4e.dem/q4e.fcst*1000)/10:null;
     const allocClr=r.Heerlen_Allocation==='PRDLOC'?'color:#1e7e34;font-weight:600':'color:#5a7a9a';
-    const cd=_ctryActive?(_ctryMap[cfnUp]||{}):null;
+    const cd=_ctryActive?(_rorCtryMap[cfnUp]||{}):null;
     const ctryTds=_ctryActive?`
       <td class="num">${fmt(cd.bo)}</td>
       <td class="num">${cd.boVal!=null?fmtCur(cd.boVal):'—'}</td>
