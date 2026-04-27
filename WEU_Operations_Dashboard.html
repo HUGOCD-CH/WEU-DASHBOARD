@@ -575,11 +575,14 @@ body.dark-mode .country-cards-empty{color:#5a7a9a;}
           <button id="clag-btn-lag1" class="lag-btn" onclick="setCountryLag('lag1')">Lag 1</button>
           <button id="clag-btn-lag2" class="lag-btn" onclick="setCountryLag('lag2')">Lag 2</button>
         </div>
-        <div class="lag-selector" id="cquarter-toggle">
+        <div class="lag-selector" id="cquarter-toggle" style="gap:3px;align-items:center;">
+          <button id="cquarter-btn-q1fy27" class="lag-btn active" onclick="setCountryQuarter('q1fy27')" style="background:#155724;color:#d4edda;border-color:#155724;">Q1 FY27</button>
+          <span style="border-left:1px solid #4a8abf;height:18px;display:inline-block;vertical-align:middle;opacity:.4;margin:0 2px;"></span>
+          <span style="font-size:9px;color:#8ab4d0;font-weight:700;letter-spacing:.3px;padding:0 1px;">FY26:</span>
           <button id="cquarter-btn-q1" class="lag-btn" onclick="setCountryQuarter('q1')">Q1</button>
           <button id="cquarter-btn-q2" class="lag-btn" onclick="setCountryQuarter('q2')">Q2</button>
           <button id="cquarter-btn-q3" class="lag-btn" onclick="setCountryQuarter('q3')">Q3</button>
-          <button id="cquarter-btn-q4" class="lag-btn active" onclick="setCountryQuarter('q4')">Q4</button>
+          <button id="cquarter-btn-q4" class="lag-btn" onclick="setCountryQuarter('q4')">Q4</button>
         </div>
         <div id="creg-toggle" style="display:flex;gap:0;border:1.5px solid #d0dff0;border-radius:8px;overflow:hidden;font-size:11px;font-weight:700;">
           <button id="creg-btn-global" onclick="setCountryView('global')"
@@ -1279,9 +1282,9 @@ function _buildCountryGlobalView(grid, selUpper, q, mpgF, hasFilter, lag){
   const [gc0,gc1,gc2] = qCfgG.cemaMths;
   // Ship% — only shown when current calendar month is within selected quarter
   const _gCurCalM=new Date().getMonth();
-  const _gQCalMap={q1:[4,5,6],q2:[7,8,9],q3:[10,11,0],q4:[1,2,3]};
-  const _gQCals=_gQCalMap[_countryTableQuarter||'q4']||[];
-  const _gShowShip=_gQCals.includes(_gCurCalM);
+  const _gQCalMap={q1fy27:[4,5,6],q1:[4,5,6],q2:[7,8,9],q3:[10,11,0],q4:[1,2,3]};
+  const _gQCals=_gQCalMap[_countryTableQuarter||'q1fy27']||[];
+  const _gShowShip=_countryTableQuarter==='q1fy27'||_gQCals.includes(_gCurCalM);
   const _gShipMthKey=_gShowShip?qCfgG.months[_gQCals.indexOf(_gCurCalM)]:null;
 
   // Per-month FCST (selected lag) + Demand for WEU and CEMA
@@ -1494,9 +1497,9 @@ function buildCountryCards(q, mpgF, exactCFNs){
   const lag = (typeof _countryTableLag!=='undefined') ? _countryTableLag : 'lag0';
   // Ship% — only shown when current calendar month is within the selected quarter
   const _qCurCalM=new Date().getMonth(); // 0=Jan..11=Dec
-  const _qCalMap={q1:[4,5,6],q2:[7,8,9],q3:[10,11,0],q4:[1,2,3]};
-  const _qCals=_qCalMap[_countryTableQuarter||'q4']||[];
-  const _showShip=_qCals.includes(_qCurCalM);
+  const _qCalMap={q1fy27:[4,5,6],q1:[4,5,6],q2:[7,8,9],q3:[10,11,0],q4:[1,2,3]};
+  const _qCals=_qCalMap[_countryTableQuarter||'q1fy27']||[];
+  const _showShip=_countryTableQuarter==='q1fy27'||_qCals.includes(_qCurCalM);
   const _shipMthKey=_showShip?qMonths[_qCals.indexOf(_qCurCalM)]:null;
 
   // ── GLOBAL VIEW ────────────────────────────────────────────────────────────
@@ -1993,13 +1996,14 @@ let bodevScatterInst=null;
 let activeFilter='all';
 // Quarter configuration — maps quarter key to month keys, CEMA keys, display labels
 const QUARTER_CFG = {
+  q1fy27: { months:['may','jun','jul'], cemaMths:['cema_may','cema_jun','cema_jul'], labels:['May','Jun','Jul'], label:'Q1 FY27' },
   q1: { months:['may','jun','jul'], cemaMths:['cema_may','cema_jun','cema_jul'], labels:['May','Jun','Jul'], label:'Q1' },
   q2: { months:['aug','sep','oct'], cemaMths:['cema_aug','cema_sep','cema_oct'], labels:['Aug','Sep','Oct'], label:'Q2' },
   q3: { months:['nov','dec','jan'], cemaMths:['cema_nov','cema_dec','cema_jan'], labels:['Nov','Dec','Jan'], label:'Q3' },
   q4: { months:['feb','mar','apr'], cemaMths:['cema_feb','cema_mar','cema_apr'], labels:['Feb','Mar','Apr'], label:'Q4' },
 };
 // Country table quarter selection
-let _countryTableQuarter = 'q4';
+let _countryTableQuarter = 'q1fy27';
 // Country group definitions for WEU view
 const COUNTRY_GROUPS = [
   { key:'FRANCE_GROUP',  label:'🇫🇷 France Group',  members:['FRANCE','REUNION','GUADELOUPE','MARTINIQUE','MAYOTTE','NEW CALEDONIA','SAINT MARTIN','ST. HELENA','FRENCH POLYNES','FRENCH POLYNES.'] },
@@ -2023,9 +2027,14 @@ let _selectedRegionKey = null;
 
 function setCountryQuarter(q){
   _countryTableQuarter = q;
-  ['q1','q2','q3','q4'].forEach(v=>{
+  ['q1fy27','q1','q2','q3','q4'].forEach(v=>{
     const b=document.getElementById('cquarter-btn-'+v);
     if(b) b.classList.toggle('active', v===q);
+    // Restore distinct green styling for Q1 FY27 when active
+    if(b&&v==='q1fy27'){
+      if(v===q){ b.style.background='#155724'; b.style.color='#d4edda'; b.style.borderColor='#155724'; }
+      else { b.style.background=''; b.style.color=''; b.style.borderColor=''; }
+    }
   });
   const qv  = (document.getElementById('global-cfn')||{value:''}).value.trim().toLowerCase();
   const mpgF= (document.getElementById('global-mpg')||{value:''}).value;
@@ -2868,7 +2877,7 @@ const ROR_COLS=[
   {key:'WoC',               label:'WoC\n(wks)'},
   {key:'BO_Dev_2wk',        label:'Exp. 2-WKS\nBO* (%)'},
   {key:'BO_Impact_2wk',     label:'Exp.\n$ Impact'},
-  // Q4_FCST_CONS rendered separately (computed on-the-fly)
+  // Q1_FCST_CONS (FY27) rendered separately (computed on-the-fly)
   {key:'DC_Heerlen',        label:'HEERLEN (NL)\nDC 1680'},
   {key:'DC_Rolo',           label:'ROLO (IT)\nDC 1335'},
   {key:'DC_Alcala',         label:'ALCALA (ES)'},
@@ -2958,7 +2967,7 @@ function _buildRorCtryMap(){
   const _cGrp=typeof COUNTRY_GROUPS!=='undefined'?COUNTRY_GROUPS.find(g=>g.key===_rorCountryKey):null;
   const _cMembers=_cGrp?_cGrp.members:[_rorCountryKey];
   if(!_cMembers.length) return;
-  const qMths=QUARTER_CFG.q4.months;
+  const qMths=QUARTER_CFG.q1.months; // Q1 FY27 (May/Jun/Jul)
   const _pStart=new Date(new Date().getFullYear(),0,24);
   const _wksPassed=Math.max(1,(new Date()-_pStart)/(7*24*60*60*1000));
   rorFiltered.forEach(r=>{
@@ -3001,10 +3010,10 @@ function renderROR(){
   const _curMon=new Date(_today); _curMon.setDate(_today.getDate()-(_today.getDay()||7)+1);
   const activeWeekKeys=WEEK_KEYS.filter(k=>_wkMon(k)>=_curMon&&ROR_DATA.some(r=>r[k]!=null&&r[k]>0));
 
-  // Q4 Forecast Consumption %: same calculation as Dashboard — Total Demand Q4 / Total FCST_Lag0 Q4
+  // Q1 FY27 Forecast Consumption %: Total Demand Q1 / Total FCST_Lag0 Q1 (May/Jun/Jul)
   const _q4Map={};
   if(typeof FCST_DATA!=='undefined'&&typeof DEMAND_DATA!=='undefined'&&typeof QUARTER_CFG!=='undefined'){
-    const qMths=QUARTER_CFG.q4.months;
+    const qMths=QUARTER_CFG.q1.months;
     qMths.forEach(m=>{
       Object.entries(FCST_DATA[m]||{}).forEach(([cfn,qty])=>{ if(!_q4Map[cfn]) _q4Map[cfn]={dem:0,fcst:0}; _q4Map[cfn].fcst+=(qty||0); });
       Object.entries(DEMAND_DATA[m]||{}).forEach(([cfn,qty])=>{ if(!_q4Map[cfn]) _q4Map[cfn]={dem:0,fcst:0}; _q4Map[cfn].dem+=(qty||0); });
@@ -3046,11 +3055,11 @@ function renderROR(){
       const ind=rorSortCol===c.key?(rorSortDir>0?' ▲':' ▼'):'';
       return `<th style="${lf(c.key)}" onclick="sortROR('${c.key}')">${c.label}${ind}</th>`;
     }).join('');
-    const q4Th=`<th style="${lf('_q4fcst')}" onclick="sortROR('_q4fcst')">Q4 FCST\nCons. %${rorSortCol==='_q4fcst'?(rorSortDir>0?' ▲':' ▼'):''}</th>`;
+    const q4Th=`<th style="${lf('_q4fcst')}" onclick="sortROR('_q4fcst')">Q1 FCST\nCons. %${rorSortCol==='_q4fcst'?(rorSortDir>0?' ▲':' ▼'):''}</th>`;
     const _ctryColDefs=_ctryActive?[
       ['BO QTY','_cBO'],['BO Value\n($)','_cBOV'],['Past Due','_cPD'],['Future Due','_cFD'],['OOB','_cOOB'],
       ['BO* QTY\n%','_cBoPct'],['Exp. Stock\n(EA)','_cStock'],['Exp. 2wk\nShip.','_cShip'],
-      ['Avg Wkly\nDemand','_cWkly'],['Exp. $\nImpact','_cImpact'],['Q4 FCST\nCons. %','_cQ4']
+      ['Avg Wkly\nDemand','_cWkly'],['Exp. $\nImpact','_cImpact'],['Q1 FCST\nCons. %','_cQ4']
     ]:[];
     const ctryThs=_ctryColDefs.map(([l,k])=>{
       const ind=rorSortCol===k?(rorSortDir>0?' ▲':' ▼'):'';
@@ -3120,10 +3129,10 @@ async function exportRORToExcel(){
     const activeWkKeys=WEEK_KEYS.filter(k=>_wkMon(k)>=_cm&&ROR_DATA.some(r=>r[k]!=null&&r[k]>0));
     const N=activeWkKeys.length;
 
-    // ── 2. Q4 FCST Cons. % — same calculation as Dashboard tab ─────────────
+    // ── 2. Q1 FY27 FCST Cons. % — same calculation as Dashboard tab ───────────
     const _xq4={};
     if(typeof FCST_DATA!=='undefined'&&typeof DEMAND_DATA!=='undefined'&&typeof QUARTER_CFG!=='undefined'){
-      const qMths=QUARTER_CFG.q4.months;
+      const qMths=QUARTER_CFG.q1.months;
       qMths.forEach(m=>{
         Object.entries(FCST_DATA[m]||{}).forEach(([cfn,qty])=>{ if(!_xq4[cfn]) _xq4[cfn]={fcst:0,dem:0}; _xq4[cfn].fcst+=(qty||0); });
         Object.entries(DEMAND_DATA[m]||{}).forEach(([cfn,qty])=>{ if(!_xq4[cfn]) _xq4[cfn]={fcst:0,dem:0}; _xq4[cfn].dem+=(qty||0); });
@@ -3139,7 +3148,7 @@ async function exportRORToExcel(){
       :(_xCtryActive?_rorCountryKey.charAt(0)+_rorCountryKey.slice(1).toLowerCase():'');
     const _xCtryMap={};
     if(_xCtryActive){
-      const qMths=QUARTER_CFG.q4.months;
+      const qMths=QUARTER_CFG.q1.months;
       const _pStart=new Date(new Date().getFullYear(),0,24);
       const _wksPassed=Math.max(1,(new Date()-_pStart)/(7*24*60*60*1000));
       rorFiltered.forEach(r=>{
@@ -3174,11 +3183,11 @@ async function exportRORToExcel(){
     const _fl=s=>s.replace(/\n/g,' ');
     const ctryLeafHdrs=_xCtryActive?[
       'BO QTY','BO Value ($)','Past Due','Future Due','OOB',
-      'BO* QTY %','Exp. Stock (EA)','Exp. 2wk Ship.','Avg Wkly Demand','Exp. $ Impact','Q4 FCST Cons. %'
+      'BO* QTY %','Exp. Stock (EA)','Exp. 2wk Ship.','Avg Wkly Demand','Exp. $ Impact','Q1 FCST Cons. %'
     ]:[];
     const leafHdrs=[
       ...ROR_COLS.slice(0,15).map(c=>_fl(c.label)), // 4 MASTER + 11 WE
-      'Q4 FCST Cons. %',                              // 1 WE computed
+      'Q1 FCST Cons. %',                              // 1 WE computed (Q1 FY27)
       ...ctryLeafHdrs,                                // 0 or 11 country cols
       ...ROR_COLS.slice(15).map(c=>_fl(c.label)),    // 4 DC
       ...activeWkKeys.map(k=>WEEK_LABELS[k]||k)      // N weeks
