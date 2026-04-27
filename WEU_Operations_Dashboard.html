@@ -762,7 +762,7 @@ body.dark-mode .country-cards-empty{color:#5a7a9a;}
   </div>
   <div class="table-wrap">
     <table>
-      <thead><tr><th>CFN</th><th>Material #</th><th>QTY (EA)</th><th>Req. Delivery</th><th>Carrier</th><th>Tracking</th><th>Priority</th><th>Status</th><th>Expected Date</th></tr></thead>
+      <thead><tr><th>CFN</th><th>Material #</th><th>QTY (EA)</th><th>Req. Delivery</th><th>Carrier</th><th>Tracking</th><th>Priority</th><th>Status</th></tr></thead>
       <tbody id="sto-body"></tbody>
     </table>
   </div>
@@ -3276,8 +3276,8 @@ async function exportRORToExcel(){
     // ── 10. In-Transit (STO) sheet ─────────────────────────────────────────
     const wsSTO=wb.addWorksheet('In-Transit (STO)');
     const stoHdrArgb='FF002244';
-    const stoHdrs=['CFN','Material #','QTY (EA)','Req. Delivery','Carrier','Tracking #','Priority','Status','Expected Date'];
-    const stoColWidths=[16,20,12,22,20,22,12,22,22];
+    const stoHdrs=['CFN','Material #','QTY (EA)','Req. Delivery','Carrier','Tracking #','Priority','Status'];
+    const stoColWidths=[16,20,12,22,20,28,12,22];
     wsSTO.columns=stoHdrs.map((h,i)=>({key:`s${i}`,width:stoColWidths[i]||15}));
     const stoHdrRow=wsSTO.addRow(stoHdrs);
     stoHdrRow.height=24;
@@ -3288,11 +3288,22 @@ async function exportRORToExcel(){
       cell.border={bottom:{style:'medium',color:{argb:'FF000000'}}};
     });
     const _fmtDt=v=>{if(!v)return'—';const d=new Date(v);return isNaN(d)?String(v):d.toISOString().slice(0,10);};
+    const _stoTrackUrl=(carrier,nr)=>{
+      if(!nr) return '';
+      const n=String(nr).trim();
+      if(carrier==='UPS') return `https://www.ups.com/track?tracknum=${n}&loc=en_US`;
+      if(carrier==='DHL') return `https://www.dhl.com/en/express/tracking.html?AWB=${n}`;
+      if(carrier==='FedEx') return `https://www.fedex.com/fedextrack/?trknbr=${n}`;
+      return '';
+    };
     STO_DATA.forEach((r,i)=>{
+      const nr=r.Tracking_Nr?String(r.Tracking_Nr).trim():'';
+      const carrier=r.Carrier||'';
+      const trackUrl=_stoTrackUrl(carrier,nr);
       const row=wsSTO.addRow([
         r.CFN||'', r.Material_Nr||'', r.Qty??null,
-        _fmtDt(r.Req_Delivery_Date), r.Carrier||'', r.Tracking_Nr||'',
-        r.Priority_Desc||'', r.Delivery_Status||'', _fmtDt(r.Expected_Date),
+        _fmtDt(r.Req_Delivery_Date), carrier, nr,
+        r.Priority_Desc||'', r.Delivery_Status||'',
       ]);
       const argb=i%2===0?'FFDCE6F1':'FFFFFFFF';
       row.eachCell({includeEmpty:true},(cell,ci)=>{
@@ -3300,6 +3311,10 @@ async function exportRORToExcel(){
         cell.font={name:'Calibri',size:10};
         cell.alignment={vertical:'middle',horizontal:ci===3?'right':'left'};
         if(ci===3&&cell.value!==null) cell.numFmt='#,##0';
+        if(ci===6&&nr&&trackUrl){
+          cell.value={text:nr,hyperlink:trackUrl};
+          cell.font={name:'Calibri',size:10,underline:true,color:{argb:'FF0563C1'}};
+        }
       });
     });
     wsSTO.views=[{state:'frozen',ySplit:1,activeCell:'A2'}];
@@ -3388,7 +3403,7 @@ function renderSTO(){
     <td class="num">${fmt(r.Qty)}</td>
     <td>${esc(r.Req_Delivery_Date||'—')}</td><td>${carrierTag(r.Carrier)}</td>
     <td>${trackingLink(r.Carrier,r.Tracking_Nr)}</td><td>${esc(r.Priority_Desc||'—')}</td>
-    <td>${statusTag(r.Delivery_Status)}</td><td>${esc(r.Expected_Date||'—')}</td>
+    <td>${statusTag(r.Delivery_Status)}</td>
   </tr>`).join('');
   renderPagination('sto-pagination',stoFiltered.length,stoPage,p=>{stoPage=p;renderSTO();});
 }
