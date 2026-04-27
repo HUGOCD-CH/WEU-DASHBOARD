@@ -2883,6 +2883,7 @@ function clearGlobalSearch(){
 let rorFiltered=[...ROR_DATA],rorPage=1,rorSortCol='BO_Value',rorSortDir=-1;
 let _rorCountryKey=''; // '' = WEU only; group key e.g. 'FRANCE_GROUP' when selected
 let _rorCtryMap={}; // per-CFN country aggregation, rebuilt in filterROR before sort
+let _rorQ1Map={}; // per-CFN Q1 FY27 FCST/Demand, rebuilt in filterROR before sort
 
 // Fixed column definitions for the sortable ROR thead
 const ROR_COLS=[
@@ -2970,14 +2971,30 @@ function filterROR(){
   rorFiltered.forEach(r=>{ r.WoC=r.Weekly_Demand>0?Math.round(r.Stock_EA/r.Weekly_Demand*10)/10:null; });
   // Rebuild country map (needed for country-col sort)
   _buildRorCtryMap();
+  // Rebuild Q1 FY27 FCST map (needed for Q1 FCST Cons.% sort)
+  _rorQ1Map={};
+  if(typeof FCST_DATA!=='undefined'&&typeof DEMAND_DATA!=='undefined'&&typeof QUARTER_CFG!=='undefined'){
+    QUARTER_CFG.q1fy27.months.forEach(m=>{
+      Object.entries(FCST_DATA[m]||{}).forEach(([cfn,qty])=>{ if(!_rorQ1Map[cfn]) _rorQ1Map[cfn]={dem:0,fcst:0}; _rorQ1Map[cfn].fcst+=(qty||0); });
+      Object.entries(DEMAND_DATA[m]||{}).forEach(([cfn,qty])=>{ if(!_rorQ1Map[cfn]) _rorQ1Map[cfn]={dem:0,fcst:0}; _rorQ1Map[cfn].dem+=(qty||0); });
+    });
+  }
   // Column sort (null values sink to bottom)
   const _cSortFld={_cBO:'bo',_cBOV:'boVal',_cPD:'pd',_cFD:'fd',_cOOB:'oob',
     _cBoPct:'boPct',_cStock:'expStock',_cShip:'expShip',_cWkly:'wklyDem',_cImpact:'expImpact',_cQ4:'q4Frac'};
   if(rorSortCol){
     rorFiltered.sort((a,b)=>{
       const cf=_cSortFld[rorSortCol];
-      const av=cf?_rorCtryMap[(a.CFN||'').toUpperCase()]?.[cf]:a[rorSortCol];
-      const bv=cf?_rorCtryMap[(b.CFN||'').toUpperCase()]?.[cf]:b[rorSortCol];
+      let av,bv;
+      if(cf){
+        av=_rorCtryMap[(a.CFN||'').toUpperCase()]?.[cf];
+        bv=_rorCtryMap[(b.CFN||'').toUpperCase()]?.[cf];
+      } else if(rorSortCol==='_q4fcst'){
+        const ae=_rorQ1Map[(a.CFN||'').toUpperCase()]; av=ae&&ae.fcst>0?ae.dem/ae.fcst:null;
+        const be=_rorQ1Map[(b.CFN||'').toUpperCase()]; bv=be&&be.fcst>0?be.dem/be.fcst:null;
+      } else {
+        av=a[rorSortCol]; bv=b[rorSortCol];
+      }
       const an=av===null||av===undefined, bn=bv===null||bv===undefined;
       if(an&&bn)return 0; if(an)return 1; if(bn)return -1;
       return rorSortDir*(typeof av==='string'?av.localeCompare(bv):av-bv);
