@@ -1284,8 +1284,9 @@ function _buildCountryGlobalView(grid, selUpper, q, mpgF, hasFilter, lag){
   const _gCurCalM=new Date().getMonth();
   const _gQCalMap={q1fy27:[4,5,6],q1:[4,5,6],q2:[7,8,9],q3:[10,11,0],q4:[1,2,3]};
   const _gQCals=_gQCalMap[_countryTableQuarter||'q1fy27']||[];
-  const _gShowShip=_countryTableQuarter==='q1fy27'||_gQCals.includes(_gCurCalM);
-  const _gShipMthKey=_gShowShip?qCfgG.months[_gQCals.indexOf(_gCurCalM)]:null;
+  const _gShowShip=_countryTableQuarter==='q1fy27'; // Ship.% only for current quarter Q1 FY27
+  const _gQCalIdx=_gQCals.indexOf(_gCurCalM);
+  const _gShipMthKey=_gShowShip&&_gQCalIdx>=0?qCfgG.months[_gQCalIdx]:null;
 
   // Per-month FCST (selected lag) + Demand for WEU and CEMA
   const wFcst={[gm0]:sumFcst(lagData,gm0),   [gm1]:sumFcst(lagData,gm1),   [gm2]:sumFcst(lagData,gm2)};
@@ -1499,8 +1500,9 @@ function buildCountryCards(q, mpgF, exactCFNs){
   const _qCurCalM=new Date().getMonth(); // 0=Jan..11=Dec
   const _qCalMap={q1fy27:[4,5,6],q1:[4,5,6],q2:[7,8,9],q3:[10,11,0],q4:[1,2,3]};
   const _qCals=_qCalMap[_countryTableQuarter||'q1fy27']||[];
-  const _showShip=_countryTableQuarter==='q1fy27'||_qCals.includes(_qCurCalM);
-  const _shipMthKey=_showShip?qMonths[_qCals.indexOf(_qCurCalM)]:null;
+  const _showShip=_countryTableQuarter==='q1fy27'; // Ship.% only for current quarter Q1 FY27
+  const _qCalIdx=_qCals.indexOf(_qCurCalM);
+  const _shipMthKey=_showShip&&_qCalIdx>=0?qMonths[_qCalIdx]:null;
 
   // ── GLOBAL VIEW ────────────────────────────────────────────────────────────
   if((typeof _countryTableView!=='undefined') && _countryTableView==='global'){
@@ -2018,7 +2020,7 @@ let bodevScatterInst=null;
 let activeFilter='all';
 // Quarter configuration — maps quarter key to month keys, CEMA keys, display labels
 const QUARTER_CFG = {
-  q1fy27: { months:['may','jun','jul'], cemaMths:['cema_may','cema_jun','cema_jul'], labels:['May','Jun','Jul'], label:'Q1 FY27' },
+  q1fy27: { months:['may27','jun27','jul27'], cemaMths:['cema_may27','cema_jun27','cema_jul27'], labels:['May','Jun','Jul'], label:'Q1 FY27' },
   q1: { months:['may','jun','jul'], cemaMths:['cema_may','cema_jun','cema_jul'], labels:['May','Jun','Jul'], label:'Q1' },
   q2: { months:['aug','sep','oct'], cemaMths:['cema_aug','cema_sep','cema_oct'], labels:['Aug','Sep','Oct'], label:'Q2' },
   q3: { months:['nov','dec','jan'], cemaMths:['cema_nov','cema_dec','cema_jan'], labels:['Nov','Dec','Jan'], label:'Q3' },
@@ -2989,7 +2991,7 @@ function _buildRorCtryMap(){
   const _cGrp=typeof COUNTRY_GROUPS!=='undefined'?COUNTRY_GROUPS.find(g=>g.key===_rorCountryKey):null;
   const _cMembers=_cGrp?_cGrp.members:[_rorCountryKey];
   if(!_cMembers.length) return;
-  const qMths=QUARTER_CFG.q1.months; // Q1 FY27 (May/Jun/Jul)
+  const qMths=QUARTER_CFG.q1fy27.months; // Q1 FY27 (May27/Jun27/Jul27)
   const _pStart=new Date(new Date().getFullYear(),0,24);
   const _wksPassed=Math.max(1,(new Date()-_pStart)/(7*24*60*60*1000));
   rorFiltered.forEach(r=>{
@@ -3032,10 +3034,10 @@ function renderROR(){
   const _curMon=new Date(_today); _curMon.setDate(_today.getDate()-(_today.getDay()||7)+1);
   const activeWeekKeys=WEEK_KEYS.filter(k=>_wkMon(k)>=_curMon&&ROR_DATA.some(r=>r[k]!=null&&r[k]>0));
 
-  // Q1 FY27 Forecast Consumption %: Total Demand Q1 / Total FCST_Lag0 Q1 (May/Jun/Jul)
+  // Q1 FY27 Forecast Consumption %: Total Demand Q1 FY27 / Total FCST_Lag0 Q1 FY27
   const _q4Map={};
   if(typeof FCST_DATA!=='undefined'&&typeof DEMAND_DATA!=='undefined'&&typeof QUARTER_CFG!=='undefined'){
-    const qMths=QUARTER_CFG.q1.months;
+    const qMths=QUARTER_CFG.q1fy27.months;
     qMths.forEach(m=>{
       Object.entries(FCST_DATA[m]||{}).forEach(([cfn,qty])=>{ if(!_q4Map[cfn]) _q4Map[cfn]={dem:0,fcst:0}; _q4Map[cfn].fcst+=(qty||0); });
       Object.entries(DEMAND_DATA[m]||{}).forEach(([cfn,qty])=>{ if(!_q4Map[cfn]) _q4Map[cfn]={dem:0,fcst:0}; _q4Map[cfn].dem+=(qty||0); });
@@ -3154,7 +3156,7 @@ async function exportRORToExcel(){
     // ── 2. Q1 FY27 FCST Cons. % — same calculation as Dashboard tab ───────────
     const _xq4={};
     if(typeof FCST_DATA!=='undefined'&&typeof DEMAND_DATA!=='undefined'&&typeof QUARTER_CFG!=='undefined'){
-      const qMths=QUARTER_CFG.q1.months;
+      const qMths=QUARTER_CFG.q1fy27.months;
       qMths.forEach(m=>{
         Object.entries(FCST_DATA[m]||{}).forEach(([cfn,qty])=>{ if(!_xq4[cfn]) _xq4[cfn]={fcst:0,dem:0}; _xq4[cfn].fcst+=(qty||0); });
         Object.entries(DEMAND_DATA[m]||{}).forEach(([cfn,qty])=>{ if(!_xq4[cfn]) _xq4[cfn]={fcst:0,dem:0}; _xq4[cfn].dem+=(qty||0); });
@@ -3170,7 +3172,7 @@ async function exportRORToExcel(){
       :(_xCtryActive?_rorCountryKey.charAt(0)+_rorCountryKey.slice(1).toLowerCase():'');
     const _xCtryMap={};
     if(_xCtryActive){
-      const qMths=QUARTER_CFG.q1.months;
+      const qMths=QUARTER_CFG.q1fy27.months;
       const _pStart=new Date(new Date().getFullYear(),0,24);
       const _wksPassed=Math.max(1,(new Date()-_pStart)/(7*24*60*60*1000));
       rorFiltered.forEach(r=>{
@@ -3727,10 +3729,10 @@ const OV_DEFS = [
 // FCST_LAG2_DATA[fkey][CFN] = Consensus_Forecast_Lag_2
 // DEMAND_DATA[fkey][CFN]    = Demand
 // CEMA_BO_QTY_MAP[CFN]      = Backorder QTY from E2E_BO_CEMA file
-const FCST_DATA         = {may:null,jun:null,jul:null,cema_may:null,cema_jun:null,cema_jul:null,aug:null,sep:null,oct:null,cema_aug:null,cema_sep:null,cema_oct:null,nov:null,dec:null,jan:null,cema_nov:null,cema_dec:null,cema_jan:null,feb:null,mar:null,apr:null,cema_feb:null,cema_mar:null,cema_apr:null};
-const FCST_LAG1_DATA    = {may:null,jun:null,jul:null,cema_may:null,cema_jun:null,cema_jul:null,aug:null,sep:null,oct:null,cema_aug:null,cema_sep:null,cema_oct:null,nov:null,dec:null,jan:null,cema_nov:null,cema_dec:null,cema_jan:null,feb:null,mar:null,apr:null,cema_feb:null,cema_mar:null,cema_apr:null};
-const FCST_LAG2_DATA    = {may:null,jun:null,jul:null,cema_may:null,cema_jun:null,cema_jul:null,aug:null,sep:null,oct:null,cema_aug:null,cema_sep:null,cema_oct:null,nov:null,dec:null,jan:null,cema_nov:null,cema_dec:null,cema_jan:null,feb:null,mar:null,apr:null,cema_feb:null,cema_mar:null,cema_apr:null};
-const DEMAND_DATA       = {may:null,jun:null,jul:null,cema_may:null,cema_jun:null,cema_jul:null,aug:null,sep:null,oct:null,cema_aug:null,cema_sep:null,cema_oct:null,nov:null,dec:null,jan:null,cema_nov:null,cema_dec:null,cema_jan:null,feb:null,mar:null,apr:null,cema_feb:null,cema_mar:null,cema_apr:null};
+const FCST_DATA         = {may27:null,jun27:null,jul27:null,cema_may27:null,cema_jun27:null,cema_jul27:null,may:null,jun:null,jul:null,cema_may:null,cema_jun:null,cema_jul:null,aug:null,sep:null,oct:null,cema_aug:null,cema_sep:null,cema_oct:null,nov:null,dec:null,jan:null,cema_nov:null,cema_dec:null,cema_jan:null,feb:null,mar:null,apr:null,cema_feb:null,cema_mar:null,cema_apr:null};
+const FCST_LAG1_DATA    = {may27:null,jun27:null,jul27:null,cema_may27:null,cema_jun27:null,cema_jul27:null,may:null,jun:null,jul:null,cema_may:null,cema_jun:null,cema_jul:null,aug:null,sep:null,oct:null,cema_aug:null,cema_sep:null,cema_oct:null,nov:null,dec:null,jan:null,cema_nov:null,cema_dec:null,cema_jan:null,feb:null,mar:null,apr:null,cema_feb:null,cema_mar:null,cema_apr:null};
+const FCST_LAG2_DATA    = {may27:null,jun27:null,jul27:null,cema_may27:null,cema_jun27:null,cema_jul27:null,may:null,jun:null,jul:null,cema_may:null,cema_jun:null,cema_jul:null,aug:null,sep:null,oct:null,cema_aug:null,cema_sep:null,cema_oct:null,nov:null,dec:null,jan:null,cema_nov:null,cema_dec:null,cema_jan:null,feb:null,mar:null,apr:null,cema_feb:null,cema_mar:null,cema_apr:null};
+const DEMAND_DATA       = {may27:null,jun27:null,jul27:null,cema_may27:null,cema_jun27:null,cema_jul27:null,may:null,jun:null,jul:null,cema_may:null,cema_jun:null,cema_jul:null,aug:null,sep:null,oct:null,cema_aug:null,cema_sep:null,cema_oct:null,nov:null,dec:null,jan:null,cema_nov:null,cema_dec:null,cema_jan:null,feb:null,mar:null,apr:null,cema_feb:null,cema_mar:null,cema_apr:null};
 const CEMA_BO_QTY_MAP   = {}; // CFN → BO_QTY from E2E_BO_CEMA
 const CEMA_BO_VAL_MAP   = {}; // CFN → BO_Value from E2E_BO_CEMA
 
@@ -3799,11 +3801,19 @@ const FOLDER_MATCHERS = [
   { key:'cema_feb', test: n => n.includes('FCST') && n.includes('CEMA') && (n.includes('M10') || n.includes('FEB')) },
   { key:'cema_mar', test: n => n.includes('FCST') && n.includes('CEMA') && (n.includes('M11') || n.includes('MAR')) },
   { key:'cema_apr', test: n => n.includes('FCST') && n.includes('CEMA') && (n.includes('M12') || n.includes('APR')) },
-  // ── WEU Q1 forecast months (fiscal codes only) ────────────────────────────────
+  // ── WEU Q1 FY27 forecast months (FY27 files take priority over generic Q1 matchers below) ───
+  { key:'may27', test: n => n.includes('FCST') && n.includes('FY27') && n.includes('WESTERN') && (n.includes('M01') || n.includes('MAY')) },
+  { key:'jun27', test: n => n.includes('FCST') && n.includes('FY27') && n.includes('WESTERN') && (n.includes('M02') || n.includes('JUN')) },
+  { key:'jul27', test: n => n.includes('FCST') && n.includes('FY27') && n.includes('WESTERN') && (n.includes('M03') || n.includes('JUL')) },
+  // ── CEMA Q1 FY27 forecast months ─────────────────────────────────────────────
+  { key:'cema_may27', test: n => n.includes('FCST') && n.includes('FY27') && n.includes('CEMA') && (n.includes('M01') || n.includes('MAY')) },
+  { key:'cema_jun27', test: n => n.includes('FCST') && n.includes('FY27') && n.includes('CEMA') && (n.includes('M02') || n.includes('JUN')) },
+  { key:'cema_jul27', test: n => n.includes('FCST') && n.includes('FY27') && n.includes('CEMA') && (n.includes('M03') || n.includes('JUL')) },
+  // ── WEU Q1 FY26 forecast months (fiscal codes only) ──────────────────────────
   { key:'may', test: n => n.includes('FCST') && n.includes('WESTERN') && n.includes('M01') },
   { key:'jun', test: n => n.includes('FCST') && n.includes('WESTERN') && n.includes('M02') },
   { key:'jul', test: n => n.includes('FCST') && n.includes('WESTERN') && n.includes('M03') },
-  // ── CEMA Q1 forecast months ───────────────────────────────────────────────────
+  // ── CEMA Q1 FY26 forecast months ─────────────────────────────────────────────
   { key:'cema_may', test: n => n.includes('FCST') && n.includes('CEMA') && (n.includes('M01') || n.includes('MAY')) },
   { key:'cema_jun', test: n => n.includes('FCST') && n.includes('CEMA') && (n.includes('M02') || n.includes('JUN')) },
   { key:'cema_jul', test: n => n.includes('FCST') && n.includes('CEMA') && (n.includes('M03') || n.includes('JUL')) },
@@ -4308,11 +4318,12 @@ function _accumulateFcstMap(key, fdet, gen){
   }
   const e = COUNTRY_FCST_MAP[key];
 
-  // Per-month storage — one bucket per Q4 month (feb / mar / apr)
+  // Per-month storage — keyed by month (e.g. 'may') or month+FY suffix for FY27 (e.g. 'may27')
   const month = (fdet.targetMonth||'').toLowerCase();
-  if(month){
-    if(!e[month]) e[month] = { totalFcst:0,cfnFcst:{},totalFcst1:0,cfnFcst1:{},totalFcst2:0,cfnFcst2:{},totalDemand:0,cfnDemand:{} };
-    const em = e[month];
+  const monthKey = month && fdet.targetFY==='27' ? month+'27' : month;
+  if(monthKey){
+    if(!e[monthKey]) e[monthKey] = { totalFcst:0,cfnFcst:{},totalFcst1:0,cfnFcst1:{},totalFcst2:0,cfnFcst2:{},totalDemand:0,cfnDemand:{} };
+    const em = e[monthKey];
     em.totalFcst   += fdet.totalFcst||0;
     em.totalFcst1  += fdet.totalFcst1||0;
     em.totalFcst2  += fdet.totalFcst2||0;
@@ -4349,6 +4360,11 @@ function _fcstTargetMonthFromFileName(fileName){
     return fyMap[parseInt(fm[1],10)] || null;
   }
   return null;
+}
+function _fcstTargetFYFromFileName(fileName){
+  // Returns 2-digit FY string e.g. '27' for FY27, '26' for FY26, null if not found
+  const m = String(fileName||'').toUpperCase().match(/FY(\d{2})/);
+  return m ? m[1] : null;
 }
 
 // Check whether a period-column cell value represents the given target month.
@@ -4459,9 +4475,10 @@ function _readFcstDetails(file){
         // Compute targetMonth FIRST — must be present even in early-return cases so
         // _accumulateFcstMap can still create the correct monthly bucket for the region.
         const targetMonth = _fcstTargetMonthFromFileName(file.name);
+        const targetFY = _fcstTargetFYFromFileName(file.name);
 
         if(idxCFN<0||colF<0){
-          resolve({totalFcst:0,cfnFcst:{},totalDemand:0,cfnDemand:{},totalFcst1:0,cfnFcst1:{},totalFcst2:0,cfnFcst2:{},targetMonth});
+          resolve({totalFcst:0,cfnFcst:{},totalDemand:0,cfnDemand:{},totalFcst1:0,cfnFcst1:{},totalFcst2:0,cfnFcst2:{},targetMonth,targetFY});
           return;
         }
 
@@ -4495,10 +4512,10 @@ function _readFcstDetails(file){
         }
         const cfnVals=(m)=>Object.values(m).reduce((s,v)=>s+(v||0),0);
         const totalFcst=cfnVals(cfnFcst),totalFcst1=cfnVals(cfnFcst1),totalFcst2=cfnVals(cfnFcst2),totalDemand=cfnVals(cfnDemand);
-        resolve({totalFcst,cfnFcst,totalFcst1,cfnFcst1,totalFcst2,cfnFcst2,totalDemand,cfnDemand,targetMonth});
-      }catch(err){resolve({totalFcst:0,cfnFcst:{},totalFcst1:0,cfnFcst1:{},totalFcst2:0,cfnFcst2:{},totalDemand:0,cfnDemand:{},targetMonth:null});}
+        resolve({totalFcst,cfnFcst,totalFcst1,cfnFcst1,totalFcst2,cfnFcst2,totalDemand,cfnDemand,targetMonth,targetFY});
+      }catch(err){resolve({totalFcst:0,cfnFcst:{},totalFcst1:0,cfnFcst1:{},totalFcst2:0,cfnFcst2:{},totalDemand:0,cfnDemand:{},targetMonth:null,targetFY:null});}
     };
-    reader.onerror=()=>resolve({totalFcst:0,cfnFcst:{},totalFcst1:0,cfnFcst1:{},totalFcst2:0,cfnFcst2:{},totalDemand:0,cfnDemand:{},targetMonth:null});
+    reader.onerror=()=>resolve({totalFcst:0,cfnFcst:{},totalFcst1:0,cfnFcst1:{},totalFcst2:0,cfnFcst2:{},totalDemand:0,cfnDemand:{},targetMonth:null,targetFY:null});
     reader.readAsArrayBuffer(file);
   });
 }
