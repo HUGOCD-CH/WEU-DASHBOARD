@@ -3861,7 +3861,7 @@ const SUBFOLDER_ROUTES = [
   { test: n => n.includes('02') && (n.includes('E2E_BO') || n.includes('BO_NEW') || n.includes('BO_CSV') || n.includes('BO'))  },  // 02 E2E_BO_NEW / 02.1 BO_CSV
   { test: n => n.includes('03') && (n.includes('SAP_INV') || n.includes('INV'))                        },  // 03 SAP_INV
   { test: n => n.includes('04') && (n.includes('STO') || n.includes('VIS'))                            },  // 04 STO_VIS
-  { test: n => n.includes('06') && (n.includes('FCST') || n.includes('CONS'))                          },  // 06 FCST_CONS
+  { test: n => n.includes('06') && (n.includes('FCST') || n.includes('CONS'))                          },  // 06 FCST_CONS / 06.1 FCST_CSV
 ];
 
 
@@ -4430,10 +4430,11 @@ function _fcstPeriodMatchesTarget(rawValue, targetMonth){
 // file contains multiple months of data (each monthly export tends to include FEB+MAR+APR).
 function _readFcstDetails(file){
   return new Promise(resolve=>{
+    const _isCSV=/\.csv$/i.test(file.name);
     const reader=new FileReader();
     reader.onload=function(e){
       try{
-        const wb=XLSX.read(new Uint8Array(e.target.result),{type:'array'});
+        const wb=_isCSV?XLSX.read(e.target.result,{type:'string'}):XLSX.read(new Uint8Array(e.target.result),{type:'array'});
         const ws=wb.Sheets[wb.SheetNames[0]];
         const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:null});
         if(!rows||rows.length<2){resolve({totalFcst:0,cfnFcst:{},totalDemand:0,cfnDemand:{}});return;}
@@ -4543,7 +4544,7 @@ function _readFcstDetails(file){
       }catch(err){resolve({totalFcst:0,cfnFcst:{},totalFcst1:0,cfnFcst1:{},totalFcst2:0,cfnFcst2:{},totalDemand:0,cfnDemand:{},targetMonth:null,targetFY:null});}
     };
     reader.onerror=()=>resolve({totalFcst:0,cfnFcst:{},totalFcst1:0,cfnFcst1:{},totalFcst2:0,cfnFcst2:{},totalDemand:0,cfnDemand:{},targetMonth:null,targetFY:null});
-    reader.readAsArrayBuffer(file);
+    if(_isCSV) reader.readAsText(file); else reader.readAsArrayBuffer(file);
   });
 }
 
@@ -5029,7 +5030,7 @@ function updateFileStrip(){
 
   if(fcstExtras.length)
     chipsHTML += summaryChip('📋', fcstExtras.length, 'FCST file' + (fcstExtras.length===1?'':'s'),
-      fcstExtras.map(e=>e.name.replace(/\.xlsx?$/i,'')),
+      fcstExtras.map(e=>e.name.replace(/\.(xlsx?|csv)$/i,'')),
       'border-color:#c9a0dc;background:#f9f4ff;color:#5a2d82;');
 
   if(ilExtras.length)
@@ -5820,10 +5821,11 @@ function recalcWeeklyDemand(){
 }
 
 function processFCSTFile(file, fkey){
+  const isCSV=/\.csv$/i.test(file.name);
   const reader=new FileReader();
   reader.onload=function(e){
     try{
-      const wb=XLSX.read(new Uint8Array(e.target.result),{type:'array'});
+      const wb=isCSV?XLSX.read(e.target.result,{type:'string'}):XLSX.read(new Uint8Array(e.target.result),{type:'array'});
       const ws=wb.Sheets[wb.SheetNames[0]];
       const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:null});
       if(!rows||rows.length<2){setFCSTCardError(fkey,'File appears empty.');return;}
@@ -5889,7 +5891,7 @@ function processFCSTFile(file, fkey){
 
     }catch(err){setFCSTCardError(fkey,'Error reading file: '+err.message);console.error(err);}
   };
-  reader.readAsArrayBuffer(file);
+  if(isCSV) reader.readAsText(file); else reader.readAsArrayBuffer(file);
 }
 
 function refreshRORWeeks(){
