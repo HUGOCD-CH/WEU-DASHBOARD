@@ -963,7 +963,7 @@ function buildBODistributionPie(q, mpgF, exactCFNs){
     // fall back to stored total only if the file was never scanned
     let ci=2;
     extras.forEach(e=>{
-      const lbl = e.name.replace(/\.xlsx?$/i,'').replace(/^E2E_BO_/i,'').replace(/_/g,' ');
+      const lbl = e.name.replace(/\.(xlsx?|csv)$/i,'').replace(/^E2E_BO_/i,'').replace(/_/g,' ');
       const lblUp = lbl.toUpperCase();
       if(!_BO_GLOBAL_LABELS.has(lblUp) || lblUp==='WEU' || lblUp==='CEMA') return;
 
@@ -996,7 +996,7 @@ function buildBODistributionPie(q, mpgF, exactCFNs){
     // ── WEU VIEW — individual European country files ──────────────────────
     let ci=0;
     extras.forEach(e=>{
-      const lblRaw = e.name.replace(/\.xlsx?$/i,'').replace(/^E2E_BO_/i,'').replace(/_/g,' ');
+      const lblRaw = e.name.replace(/\.(xlsx?|csv)$/i,'').replace(/^E2E_BO_/i,'').replace(/_/g,' ');
       const lblUpper = lblRaw.toUpperCase();
       if(_BO_GLOBAL_LABELS.has(lblUpper)) return;
       let v = parseFloat(e.qty)||0;
@@ -1354,9 +1354,9 @@ function _buildCountryGlobalView(grid, selUpper, q, mpgF, hasFilter, lag){
   // (same data pipeline as WEU / CEMA — uses the same sumFcst function)
   const boExtras = JSON.parse(localStorage.getItem('extra_bo_files')||'[]');
   const otherRows = boExtras
-    .filter(e=>{ const k=e.name.replace(/\.xlsx$/i,'').replace(/E2E_BO_/i,'').replace(/_/g,' ').trim().toUpperCase(); return _BO_GLOBAL_LABELS.has(k)&&k!=='WEU'&&k!=='CEMA'; })
+    .filter(e=>{ const k=e.name.replace(/\.(xlsx?|csv)$/i,'').replace(/E2E_BO_/i,'').replace(/_/g,' ').trim().toUpperCase(); return _BO_GLOBAL_LABELS.has(k)&&k!=='WEU'&&k!=='CEMA'; })
     .map(e=>{
-      const cKey=e.name.replace(/\.xlsx$/i,'').replace(/E2E_BO_/i,'').replace(/_/g,' ').trim().toUpperCase();
+      const cKey=e.name.replace(/\.(xlsx?|csv)$/i,'').replace(/E2E_BO_/i,'').replace(/_/g,' ').trim().toUpperCase();
       let boQty=e.qty||0, boVal=e.val||0;
       if(hasFilter && typeof COUNTRY_BO_MAP!=='undefined' && COUNTRY_BO_MAP[cKey]){
         const cm=COUNTRY_BO_MAP[cKey]; boQty=0; boVal=0;
@@ -1486,7 +1486,7 @@ function buildCountryCards(q, mpgF, exactCFNs){
 
   const boExtras = JSON.parse(localStorage.getItem('extra_bo_files')||'[]');
   if(boExtras.length === 0){
-    grid.innerHTML = '<span class="country-cards-empty">Load country BO files (02 E2E_BO_NEW subfolder) to see per-country data.</span>';
+    grid.innerHTML = '<span class="country-cards-empty">Load country BO files (02.1 BO_CSV subfolder) to see per-country data.</span>';
     return;
   }
 
@@ -1521,9 +1521,9 @@ function buildCountryCards(q, mpgF, exactCFNs){
 
   // ── Build row data ────────────────────────────────────────────────────────
   const rows = boExtras
-    .filter(e=>{ const k=e.name.replace(/\.xlsx$/i,'').replace(/E2E_BO_/i,'').replace(/_/g,' ').trim().toUpperCase(); return !_BO_GLOBAL_LABELS.has(k); })
+    .filter(e=>{ const k=e.name.replace(/\.(xlsx?|csv)$/i,'').replace(/E2E_BO_/i,'').replace(/_/g,' ').trim().toUpperCase(); return !_BO_GLOBAL_LABELS.has(k); })
     .map(e=>{
-      const cKey=e.name.replace(/\.xlsx$/i,'').replace(/E2E_BO_/i,'').replace(/_/g,' ').trim().toUpperCase();
+      const cKey=e.name.replace(/\.(xlsx?|csv)$/i,'').replace(/E2E_BO_/i,'').replace(/_/g,' ').trim().toUpperCase();
       const flag=_cflag(cKey);
       let boQty=e.qty||0, boVal=e.val||0;
       if(hasFilter && COUNTRY_BO_MAP[cKey]){
@@ -3836,7 +3836,7 @@ const FCST_MULTI_KEYS = new Set(['may','jun','jul','cema_may','cema_jun','cema_j
 // Normalised subfolder name (uppercase, non-alnum → '_') is tested against each rule.
 // Files found inside a matched subfolder are then matched by FOLDER_MATCHERS above.
 const SUBFOLDER_ROUTES = [
-  { test: n => n.includes('02') && (n.includes('E2E_BO') || n.includes('BO_NEW') || n.includes('BO'))  },  // 02 E2E_BO_NEW
+  { test: n => n.includes('02') && (n.includes('E2E_BO') || n.includes('BO_NEW') || n.includes('BO_CSV') || n.includes('BO'))  },  // 02 E2E_BO_NEW / 02.1 BO_CSV
   { test: n => n.includes('03') && (n.includes('SAP_INV') || n.includes('INV'))                        },  // 03 SAP_INV
   { test: n => n.includes('04') && (n.includes('STO') || n.includes('VIS'))                            },  // 04 STO_VIS
   { test: n => n.includes('06') && (n.includes('FCST') || n.includes('CONS'))                          },  // 06 FCST_CONS
@@ -4003,11 +4003,13 @@ async function refreshBOFile(){
 // ── Core parser — shared by both open and refresh paths ──────────
 function processBO(file){
   setBOBannerLoading(file.name);
+  const isCSV=/\.csv$/i.test(file.name);
   const reader=new FileReader();
   reader.onload=function(e){
     try{
-      const data=new Uint8Array(e.target.result);
-      const wb=XLSX.read(data,{type:'array',cellDates:true});
+      const wb=isCSV
+        ?XLSX.read(e.target.result,{type:'string'})
+        :XLSX.read(new Uint8Array(e.target.result),{type:'array',cellDates:true});
       const ws=wb.Sheets[wb.SheetNames[0]];
       const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:null});
       if(!rows||rows.length<2){setBOBannerError('File appears empty.');return;}
@@ -4172,16 +4174,17 @@ function processBO(file){
       console.error(err);
     }
   };
-  reader.readAsArrayBuffer(file);
+  if(isCSV) reader.readAsText(file); else reader.readAsArrayBuffer(file);
 }
 
 // ── Helper: read only the total BO value from a BO file (no side-effects) ──
 function _readBOTotal(file){
   return new Promise(resolve=>{
+    const _isCSV=/\.csv$/i.test(file.name);
     const reader=new FileReader();
     reader.onload=function(e){
       try{
-        const wb=XLSX.read(new Uint8Array(e.target.result),{type:'array'});
+        const wb=_isCSV?XLSX.read(e.target.result,{type:'string'}):XLSX.read(new Uint8Array(e.target.result),{type:'array'});
         const ws=wb.Sheets[wb.SheetNames[0]];
         const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:null});
         if(!rows||rows.length<2){resolve(0);return;}
@@ -4204,7 +4207,7 @@ function _readBOTotal(file){
       }catch(err){resolve(0);}
     };
     reader.onerror=()=>resolve(0);
-    reader.readAsArrayBuffer(file);
+    if(_isCSV) reader.readAsText(file); else reader.readAsArrayBuffer(file);
   });
 }
 
@@ -4212,10 +4215,11 @@ function _readBOTotal(file){
 // Used for country-specific BO files (extra_bo_files) to support country cards
 function _readBODetails(file){
   return new Promise(resolve=>{
+    const _isCSV=/\.csv$/i.test(file.name);
     const reader=new FileReader();
     reader.onload=function(e){
       try{
-        const wb=XLSX.read(new Uint8Array(e.target.result),{type:'array'});
+        const wb=_isCSV?XLSX.read(e.target.result,{type:'string'}):XLSX.read(new Uint8Array(e.target.result),{type:'array'});
         const ws=wb.Sheets[wb.SheetNames[0]];
         const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:null});
         const _empty={totalVal:0,totalQty:0,cfnQty:{},cfnVal:{},cats:null};
@@ -4271,7 +4275,7 @@ function _readBODetails(file){
       }catch(err){resolve({totalVal:0,totalQty:0,cfnQty:{},cfnVal:{},cats:null});}
     };
     reader.onerror=()=>resolve({totalVal:0,totalQty:0,cfnQty:{},cfnVal:{},cats:null});
-    reader.readAsArrayBuffer(file);
+    if(_isCSV) reader.readAsText(file); else reader.readAsArrayBuffer(file);
   });
 }
 
@@ -4704,7 +4708,7 @@ async function _scanFolderForFiles(dirHandle){
     const isSTOIsraelSubfolder   = n.includes('04') && n.includes('ISRAEL');
           try{
             for await(const sub of entry.values()){
-              if(sub.kind==='file' && /\.(xlsx|xlsm)$/i.test(sub.name)){
+              if(sub.kind==='file' && /\.(xlsx|xlsm|csv)$/i.test(sub.name)){
                 xlsxEntries.push(sub);
                 if(isBOSubfolder)        boSubfolderEntries.push(sub);
                 if(isINVSubfolder)       invSubfolderEntries.push(sub);
@@ -4723,12 +4727,12 @@ async function _scanFolderForFiles(dirHandle){
   if(subfoldersFound === 0){
     try{
       for await(const entry of dirHandle.values()){
-        if(entry.kind === 'file' && /\.(xlsx|xlsm)$/i.test(entry.name)){
+        if(entry.kind === 'file' && /\.(xlsx|xlsm|csv)$/i.test(entry.name)){
           xlsxEntries.push(entry);
         } else if(entry.kind === 'directory'){
           try{
             for await(const sub of entry.values()){
-              if(sub.kind==='file' && /\.(xlsx|xlsm)$/i.test(sub.name)) xlsxEntries.push(sub);
+              if(sub.kind==='file' && /\.(xlsx|xlsm|csv)$/i.test(sub.name)) xlsxEntries.push(sub);
             }
           }catch(e){ console.warn('Could not read subfolder', entry.name, e); }
         }
@@ -4828,7 +4832,7 @@ async function loadFromFolder(){
           const boDetails = await _readBODetails(file);
           const boVal = boDetails.totalVal, boQty = boDetails.totalQty;
           // Populate in-memory COUNTRY_BO_MAP for per-CFN country cards
-          const _cKey = file.name.replace(/\.xlsx$/i,'').replace(/E2E_BO_/i,'').replace(/_/g,' ').trim().toUpperCase();
+          const _cKey = file.name.replace(/\.(xlsx?|csv)$/i,'').replace(/E2E_BO_/i,'').replace(/_/g,' ').trim().toUpperCase();
           COUNTRY_BO_MAP[_cKey] = { totalQty: boQty, totalVal: boVal, cfnQty: boDetails.cfnQty, cfnVal: boDetails.cfnVal };
           if(boDetails.cats) COUNTRY_OO_MAP[_cKey] = boDetails.cats;
           if(!existingNames.has(file.name)){
@@ -4994,7 +4998,7 @@ function updateFileStrip(){
 
   if(boExtras.length)
     chipsHTML += summaryChip('📂', boExtras.length, 'BO countr' + (boExtras.length===1?'y':'ies'),
-      boExtras.map(e=>e.name.replace(/\.xlsx?$/i,'').replace(/^E2E_BO_/i,'')), 'border-color:#f0c040;');
+      boExtras.map(e=>e.name.replace(/\.(xlsx?|csv)$/i,'').replace(/^E2E_BO_/i,'')), 'border-color:#f0c040;');
 
   if(invExtras.length)
     chipsHTML += summaryChip('🏭', invExtras.length, 'INV file' + (invExtras.length===1?'':'s'),
@@ -5079,7 +5083,7 @@ async function refreshAllFiles(){
             try{
               const file = await entry.getFile();
               const det  = await _readBODetails(file);
-              const cKey = file.name.replace(/\.xlsx$/i,'').replace(/E2E_BO_/i,'').replace(/_/g,' ').trim().toUpperCase();
+              const cKey = file.name.replace(/\.(xlsx?|csv)$/i,'').replace(/E2E_BO_/i,'').replace(/_/g,' ').trim().toUpperCase();
               COUNTRY_BO_MAP[cKey] = { totalQty:det.totalQty, totalVal:det.totalVal, cfnQty:det.cfnQty, cfnVal:det.cfnVal };
               if(det.cats) COUNTRY_OO_MAP[cKey] = det.cats;
               if(!existingNames.has(file.name)){
