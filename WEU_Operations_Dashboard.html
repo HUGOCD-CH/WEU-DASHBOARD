@@ -4022,6 +4022,23 @@ async function refreshBOFile(){
   }
 }
 
+// Parse CSV text → 2D array of string values (no type coercion, preserves leading zeros).
+// Used for all CSV files instead of XLSX.read({type:'string'}) to avoid SheetJS format
+// detection issues with bracket-heavy PowerBI column names.
+function _csvToRows(text){
+  const lines=text.replace(/\r\n/g,'\n').replace(/\r/g,'\n').split('\n');
+  return lines.filter(l=>l.trim()).map(l=>{
+    const cells=[]; let cur='', inQ=false;
+    for(let i=0;i<l.length;i++){
+      if(l[i]==='"'){inQ=!inQ;}
+      else if(l[i]===','&&!inQ){cells.push(cur===''?null:cur);cur='';}
+      else cur+=l[i];
+    }
+    cells.push(cur===''?null:cur);
+    return cells;
+  });
+}
+
 // ── Core parser — shared by both open and refresh paths ──────────
 function processBO(file){
   setBOBannerLoading(file.name);
@@ -4029,15 +4046,17 @@ function processBO(file){
   const reader=new FileReader();
   reader.onload=function(e){
     try{
-      const wb=isCSV
-        ?XLSX.read(e.target.result,{type:'string'})
-        :XLSX.read(new Uint8Array(e.target.result),{type:'array',cellDates:true});
-      const ws=wb.Sheets[wb.SheetNames[0]];
-      const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:null});
+      let rows;
+      if(isCSV){
+        rows=_csvToRows(e.target.result);
+      } else {
+        const wb=XLSX.read(new Uint8Array(e.target.result),{type:'array',cellDates:true});
+        rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:null});
+      }
       if(!rows||rows.length<2){setBOBannerError('File appears empty.');return;}
 
-      // Detect columns
-      const hdr=rows[0].map(h=>String(h||'').toLowerCase());
+      // Detect columns — strip brackets so [ColumnName] headers work for both XLS and CSV
+      const hdr=rows[0].map(h=>String(h||'').toLowerCase().replace(/^\[|\]$/g,''));
       const idxGrand=hdr.findIndex(h=>h.includes('isgrandtotal'));
       const idxVal  =hdr.findIndex(h=>h.includes('total_open_order__')||h.includes('total_value')||h.includes('open_order__'));
       const idxQty  =hdr.findIndex(h=>h.includes('total_open_order_qty')||h.includes('total_qty')||h.includes('open_order_qty'));
@@ -4206,11 +4225,11 @@ function _readBOTotal(file){
     const reader=new FileReader();
     reader.onload=function(e){
       try{
-        const wb=_isCSV?XLSX.read(e.target.result,{type:'string'}):XLSX.read(new Uint8Array(e.target.result),{type:'array'});
-        const ws=wb.Sheets[wb.SheetNames[0]];
-        const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:null});
+        let rows;
+        if(_isCSV){ rows=_csvToRows(e.target.result); }
+        else { const wb=XLSX.read(new Uint8Array(e.target.result),{type:'array'}); rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:null}); }
         if(!rows||rows.length<2){resolve(0);return;}
-        const hdr=rows[0].map(h=>String(h||'').toLowerCase());
+        const hdr=rows[0].map(h=>String(h||'').toLowerCase().replace(/^\[|\]$/g,''));
         const idxGrand=hdr.findIndex(h=>h.includes('isgrandtotal'));
         const idxCat  =hdr.findIndex(h=>h.includes('parent_category')||h.includes('category')||h.includes('flow'));
         const idxVal  =hdr.findIndex(h=>h.includes('total_open_order__')||h.includes('total_value')||h.includes('open_order__'));
@@ -4241,12 +4260,12 @@ function _readBODetails(file){
     const reader=new FileReader();
     reader.onload=function(e){
       try{
-        const wb=_isCSV?XLSX.read(e.target.result,{type:'string'}):XLSX.read(new Uint8Array(e.target.result),{type:'array'});
-        const ws=wb.Sheets[wb.SheetNames[0]];
-        const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:null});
+        let rows;
+        if(_isCSV){ rows=_csvToRows(e.target.result); }
+        else { const wb=XLSX.read(new Uint8Array(e.target.result),{type:'array'}); rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:null}); }
         const _empty={totalVal:0,totalQty:0,cfnQty:{},cfnVal:{},cats:null};
         if(!rows||rows.length<2){resolve(_empty);return;}
-        const hdr=rows[0].map(h=>String(h||'').toLowerCase());
+        const hdr=rows[0].map(h=>String(h||'').toLowerCase().replace(/^\[|\]$/g,''));
         const idxGrand=hdr.findIndex(h=>h.includes('isgrandtotal'));
         const idxCat  =hdr.findIndex(h=>h.includes('parent_category')||h.includes('category')||h.includes('flow'));
         const idxVal  =hdr.findIndex(h=>h.includes('total_open_order__')||h.includes('total_value')||h.includes('open_order__'));
@@ -4308,7 +4327,7 @@ function _readBODetails(file){
 // Also handles fully-underscored: "FCST_FY26_M10_FEB_GERMANY_ALL.xlsx"
 function _fcstCountryKey(fileName){
   // 1. Strip extension and _ALL suffix
-  const name = fileName.replace(/\.xlsx?$/i,'').replace(/_ALL$/i,'');
+  const name = fileName.replace(/\.(xlsx?|csv)$/i,'').replace(/_ALL$/i,'');
   // 2. Tokenise on ANY combination of spaces and/or underscores
   const parts = name.split(/[\s_]+/);
   // 3. Walk tokens to find the LAST month identifier (M10/M11/M12 or FEB/MAR/APR etc.)
@@ -4434,9 +4453,9 @@ function _readFcstDetails(file){
     const reader=new FileReader();
     reader.onload=function(e){
       try{
-        const wb=_isCSV?XLSX.read(e.target.result,{type:'string'}):XLSX.read(new Uint8Array(e.target.result),{type:'array'});
-        const ws=wb.Sheets[wb.SheetNames[0]];
-        const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:null});
+        let rows;
+        if(_isCSV){ rows=_csvToRows(e.target.result); }
+        else { const wb=XLSX.read(new Uint8Array(e.target.result),{type:'array'}); rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:null}); }
         if(!rows||rows.length<2){resolve({totalFcst:0,cfnFcst:{},totalDemand:0,cfnDemand:{}});return;}
         // Strip brackets and normalise headers — handles PowerBI exports like [Demand], [Consensus_Forecast_Lag_0]
         const hdr=rows[0].map(h=>String(h||'').toLowerCase().trim().replace(/^\[|\]$/g,''));
@@ -5825,12 +5844,13 @@ function processFCSTFile(file, fkey){
   const reader=new FileReader();
   reader.onload=function(e){
     try{
-      const wb=isCSV?XLSX.read(e.target.result,{type:'string'}):XLSX.read(new Uint8Array(e.target.result),{type:'array'});
-      const ws=wb.Sheets[wb.SheetNames[0]];
-      const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:null});
+      let rows;
+      if(isCSV){ rows=_csvToRows(e.target.result); }
+      else { const wb=XLSX.read(new Uint8Array(e.target.result),{type:'array'}); rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:null}); }
       if(!rows||rows.length<2){setFCSTCardError(fkey,'File appears empty.');return;}
 
-      const hdr=rows[0].map(h=>String(h||'').toLowerCase());
+      // Strip brackets so [ColumnName] PowerBI headers work for both XLS and CSV
+      const hdr=rows[0].map(h=>String(h||'').toLowerCase().replace(/^\[|\]$/g,''));
       const idxGrand  = hdr.findIndex(h=>h.includes('isgrandtotal'));
       const idxCFN    = hdr.findIndex(h=>h.includes('cfn'));
       const idxFcst   = hdr.findIndex(h=>h.includes('consensus_forecast_lag_0'));
