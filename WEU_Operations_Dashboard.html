@@ -1364,7 +1364,7 @@ function _buildCountryGlobalView(grid, selUpper, q, mpgF, hasFilter, lag){
   // (same data pipeline as WEU / CEMA — uses the same sumFcst function)
   const boExtras = _dedupeBoExtras(JSON.parse(localStorage.getItem('extra_bo_files')||'[]'));
   const otherRows = boExtras
-    .filter(e=>{ const k=_boExtraKey(e.name); return _BO_GLOBAL_LABELS.has(k)&&k!=='WEU'&&k!=='CEMA'; })
+    .filter(e=>{ const k=_boExtraKey(e.name); return _BO_GLOBAL_LABELS.has(k)&&k!=='WEU'&&k!=='CEMA'&&k!=='WESTERN EUROPE'; })
     .map(e=>{
       const cKey=_boExtraKey(e.name);
       let boQty=e.qty||0, boVal=e.val||0;
