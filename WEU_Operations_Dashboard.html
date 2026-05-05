@@ -4915,7 +4915,8 @@ async function loadFromFolder(){
           const fKey = _fcstCountryKey(file.name);
           _accumulateFcstMap(fKey, fdet, _myFcstGen);
           // Also store directly into FCST_DATA with composite key (same pipeline as WEU/CEMA)
-          const _ck = fKey.toLowerCase().replace(/\s+/g,'_')+'_'+_fm.toLowerCase();
+          const _fyStr = fdet.targetFY==='27' ? '27' : '';
+          const _ck = fKey.toLowerCase().replace(/\s+/g,'_')+'_'+_fm.toLowerCase()+_fyStr;
           FCST_DATA[_ck]      = fdet.cfnFcst   ||{};
           if(typeof FCST_LAG1_DATA!=='undefined') FCST_LAG1_DATA[_ck] = fdet.cfnFcst1  ||null;
           if(typeof FCST_LAG2_DATA!=='undefined') FCST_LAG2_DATA[_ck] = fdet.cfnFcst2  ||null;
@@ -5149,11 +5150,12 @@ async function refreshAllFiles(){
             try{
               const file = await entry.getFile();
               const _fm = _fcstTargetMonthFromFileName(file.name);
-              if(!_fm || !['FEB','MAR','APR'].includes(_fm)) continue;
+              if(!_fm || !['MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC','JAN','FEB','MAR','APR'].includes(_fm)) continue;
               const fdet = await _readFcstDetails(file);
               const fKey = _fcstCountryKey(file.name);
               _accumulateFcstMap(fKey, fdet, _myFcstGen);
-              const _ck2 = fKey.toLowerCase().replace(/\s+/g,'_')+'_'+_fm.toLowerCase();
+              const _fyStr2 = fdet.targetFY==='27' ? '27' : '';
+              const _ck2 = fKey.toLowerCase().replace(/\s+/g,'_')+'_'+_fm.toLowerCase()+_fyStr2;
               FCST_DATA[_ck2]      = fdet.cfnFcst   ||{};
               if(typeof FCST_LAG1_DATA!=='undefined') FCST_LAG1_DATA[_ck2] = fdet.cfnFcst1  ||null;
               if(typeof FCST_LAG2_DATA!=='undefined') FCST_LAG2_DATA[_ck2] = fdet.cfnFcst2  ||null;
@@ -5682,11 +5684,12 @@ function checkInvBannerLoaded(){
         try{
           const file = await entry.getFile();
           const _fm = _fcstTargetMonthFromFileName(file.name);
-          if(!_fm || !['FEB','MAR','APR'].includes(_fm)) continue;
+          if(!_fm || !['MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC','JAN','FEB','MAR','APR'].includes(_fm)) continue;
           const fdet = await _readFcstDetails(file);
           const fKey = _fcstCountryKey(file.name);
           _accumulateFcstMap(fKey, fdet, _myFcstGen);
-          const _ck3 = fKey.toLowerCase().replace(/\s+/g,'_')+'_'+_fm.toLowerCase();
+          const _fyStr3 = fdet.targetFY==='27' ? '27' : '';
+          const _ck3 = fKey.toLowerCase().replace(/\s+/g,'_')+'_'+_fm.toLowerCase()+_fyStr3;
           FCST_DATA[_ck3]      = fdet.cfnFcst   ||{};
           if(typeof FCST_LAG1_DATA!=='undefined') FCST_LAG1_DATA[_ck3] = fdet.cfnFcst1  ||null;
           if(typeof FCST_LAG2_DATA!=='undefined') FCST_LAG2_DATA[_ck3] = fdet.cfnFcst2  ||null;
