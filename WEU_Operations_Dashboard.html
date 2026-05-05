@@ -871,7 +871,7 @@ let _boDistView = 'global'; // default view
 
 // Regions that belong to the GLOBAL view (matched against normalised label)
 const _BO_GLOBAL_LABELS = new Set([
-  'WEU','CEMA',
+  'WEU','CEMA','WESTERN EUROPE',
   'USA','SEA','RUSSIA','LATIN AMERICA','KOREA','JAPAN','INDIA',
   'HONG KONG AND TAIWAN','CHINA','CANADA','ANZ'
 ]);
@@ -974,9 +974,9 @@ function buildBODistributionPie(q, mpgF, exactCFNs){
     // fall back to stored total only if the file was never scanned
     let ci=2;
     extras.forEach(e=>{
-      const lbl = e.name.replace(/\.(xlsx?|csv)$/i,'').replace(/^E2E_BO_/i,'').replace(/_/g,' ');
-      const lblUp = lbl.toUpperCase();
-      if(!_BO_GLOBAL_LABELS.has(lblUp) || lblUp==='WEU' || lblUp==='CEMA') return;
+      const lblUp = _boExtraKey(e.name); // canonical key (uppercase, trimmed, no prefix)
+      if(!lblUp || !_BO_GLOBAL_LABELS.has(lblUp) || lblUp==='WEU' || lblUp==='CEMA' || lblUp==='WESTERN EUROPE') return;
+      const lbl = lblUp;
 
       let v, regionFiltered = false;
       if(hasFilter && typeof COUNTRY_BO_MAP!=='undefined' && COUNTRY_BO_MAP[lblUp]){
@@ -1007,13 +1007,12 @@ function buildBODistributionPie(q, mpgF, exactCFNs){
     // ── WEU VIEW — individual European country files ──────────────────────
     let ci=0;
     extras.forEach(e=>{
-      const lblRaw = e.name.replace(/\.(xlsx?|csv)$/i,'').replace(/^E2E_BO_/i,'').replace(/_/g,' ');
-      const lblUpper = lblRaw.toUpperCase();
-      if(_BO_GLOBAL_LABELS.has(lblUpper)) return;
+      const cKey = _boExtraKey(e.name); // canonical key (uppercase, trimmed, no prefix)
+      if(!cKey || _BO_GLOBAL_LABELS.has(cKey)) return;
       let v = parseFloat(e.qty)||0;
       // When a CFN/MPG filter is active and we have per-CFN BO data, apply filter
-      if(hasFilter && typeof COUNTRY_BO_MAP !== 'undefined' && COUNTRY_BO_MAP[lblUpper]){
-        const cm = COUNTRY_BO_MAP[lblUpper];
+      if(hasFilter && typeof COUNTRY_BO_MAP !== 'undefined' && COUNTRY_BO_MAP[cKey]){
+        const cm = COUNTRY_BO_MAP[cKey];
         const selUpper2 = _cfns.map(c=>c.toUpperCase());
         v = 0;
         Object.entries(cm.cfnQty).forEach(([cfn,qty])=>{
@@ -1025,7 +1024,7 @@ function buildBODistributionPie(q, mpgF, exactCFNs){
         });
       }
       if(v<=0) return;
-      labels.push(lblRaw); data.push(v); bgColors.push(palette[ci%palette.length]); ci++;
+      labels.push(cKey); data.push(v); bgColors.push(palette[ci%palette.length]); ci++;
     });
   }
 
