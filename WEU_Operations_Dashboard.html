@@ -876,6 +876,17 @@ const _BO_GLOBAL_LABELS = new Set([
   'HONG KONG AND TAIWAN','CHINA','CANADA','ANZ'
 ]);
 
+// Extract the canonical country key from a BO extras filename
+function _boExtraKey(fname){
+  return fname.replace(/\.(xlsx?|csv)$/i,'').replace(/E2E_BO_/i,'').replace(/_/g,' ').trim().toUpperCase();
+}
+// Deduplicate extra_bo_files array by country key (last entry per key wins — most recently loaded)
+function _dedupeBoExtras(arr){
+  const seen=new Map();
+  arr.forEach(e=>seen.set(_boExtraKey(e.name),e));
+  return Array.from(seen.values());
+}
+
 function setBODistView(view){
   _boDistView = view;
   // Update button styles
@@ -944,7 +955,7 @@ function buildBODistributionPie(q, mpgF, exactCFNs){
     }, 0);
   }
 
-  const extras = JSON.parse(localStorage.getItem('extra_bo_files')||'[]');
+  const extras = _dedupeBoExtras(JSON.parse(localStorage.getItem('extra_bo_files')||'[]'));
   const labels=[], data=[], bgColors=[];
 
   let _hasUnfilteredRegions = false; // tracks if any region fell back to stored totals
@@ -1352,11 +1363,11 @@ function _buildCountryGlobalView(grid, selUpper, q, mpgF, hasFilter, lag){
 
   // Other global regions — read FCST directly from FCST_DATA with composite keys
   // (same data pipeline as WEU / CEMA — uses the same sumFcst function)
-  const boExtras = JSON.parse(localStorage.getItem('extra_bo_files')||'[]');
+  const boExtras = _dedupeBoExtras(JSON.parse(localStorage.getItem('extra_bo_files')||'[]'));
   const otherRows = boExtras
-    .filter(e=>{ const k=e.name.replace(/\.(xlsx?|csv)$/i,'').replace(/E2E_BO_/i,'').replace(/_/g,' ').trim().toUpperCase(); return _BO_GLOBAL_LABELS.has(k)&&k!=='WEU'&&k!=='CEMA'; })
+    .filter(e=>{ const k=_boExtraKey(e.name); return _BO_GLOBAL_LABELS.has(k)&&k!=='WEU'&&k!=='CEMA'; })
     .map(e=>{
-      const cKey=e.name.replace(/\.(xlsx?|csv)$/i,'').replace(/E2E_BO_/i,'').replace(/_/g,' ').trim().toUpperCase();
+      const cKey=_boExtraKey(e.name);
       let boQty=e.qty||0, boVal=e.val||0;
       if(hasFilter && typeof COUNTRY_BO_MAP!=='undefined' && COUNTRY_BO_MAP[cKey]){
         const cm=COUNTRY_BO_MAP[cKey]; boQty=0; boVal=0;
@@ -1484,7 +1495,7 @@ function buildCountryCards(q, mpgF, exactCFNs){
   const grid = document.getElementById('country-cards-grid');
   if(!grid) return;
 
-  const boExtras = JSON.parse(localStorage.getItem('extra_bo_files')||'[]');
+  const boExtras = _dedupeBoExtras(JSON.parse(localStorage.getItem('extra_bo_files')||'[]'));
   if(boExtras.length === 0){
     grid.innerHTML = '<span class="country-cards-empty">Load country BO files (02.1 BO_CSV subfolder) to see per-country data.</span>';
     return;
@@ -1521,9 +1532,9 @@ function buildCountryCards(q, mpgF, exactCFNs){
 
   // ── Build row data ────────────────────────────────────────────────────────
   const rows = boExtras
-    .filter(e=>{ const k=e.name.replace(/\.(xlsx?|csv)$/i,'').replace(/E2E_BO_/i,'').replace(/_/g,' ').trim().toUpperCase(); return !_BO_GLOBAL_LABELS.has(k); })
+    .filter(e=>{ const k=_boExtraKey(e.name); return !_BO_GLOBAL_LABELS.has(k); })
     .map(e=>{
-      const cKey=e.name.replace(/\.(xlsx?|csv)$/i,'').replace(/E2E_BO_/i,'').replace(/_/g,' ').trim().toUpperCase();
+      const cKey=_boExtraKey(e.name);
       const flag=_cflag(cKey);
       let boQty=e.qty||0, boVal=e.val||0;
       if(hasFilter && COUNTRY_BO_MAP[cKey]){
@@ -4845,23 +4856,19 @@ async function loadFromFolder(){
     if(result.boExtras && result.boExtras.length > 0){
       const ts = new Date().toLocaleString();
       const existing = JSON.parse(localStorage.getItem('extra_bo_files')||'[]');
-      const existingNames = new Set(existing.map(e=>e.name));
       for(const entry of result.boExtras){
         try{
           const file = await entry.getFile();
           const boDetails = await _readBODetails(file);
           const boVal = boDetails.totalVal, boQty = boDetails.totalQty;
           // Populate in-memory COUNTRY_BO_MAP for per-CFN country cards
-          const _cKey = file.name.replace(/\.(xlsx?|csv)$/i,'').replace(/E2E_BO_/i,'').replace(/_/g,' ').trim().toUpperCase();
+          const _cKey = _boExtraKey(file.name);
           COUNTRY_BO_MAP[_cKey] = { totalQty: boQty, totalVal: boVal, cfnQty: boDetails.cfnQty, cfnVal: boDetails.cfnVal };
           if(boDetails.cats) COUNTRY_OO_MAP[_cKey] = boDetails.cats;
-          if(!existingNames.has(file.name)){
-            existing.push({ name: file.name, at: ts, val: boVal, qty: boQty });
-            existingNames.add(file.name);
-          } else {
-            const rec = existing.find(e=>e.name===file.name);
-            if(rec){ rec.at = ts; rec.val = boVal; rec.qty = boQty; }
-          }
+          // Deduplicate by country key so XLS→CSV transition doesn't create duplicates
+          const rec = existing.find(e=>_boExtraKey(e.name)===_cKey);
+          if(rec){ rec.name=file.name; rec.at=ts; rec.val=boVal; rec.qty=boQty; }
+          else existing.push({ name: file.name, at: ts, val: boVal, qty: boQty });
           done++;
         }catch(e){ console.warn('boExtras getFile error', e); failed++; }
       }
@@ -5002,7 +5009,7 @@ function updateFileStrip(){
   }).join('');
 
   // --- Extras: one summary chip per category ---
-  const boExtras   = JSON.parse(localStorage.getItem('extra_bo_files')||'[]');
+  const boExtras   = _dedupeBoExtras(JSON.parse(localStorage.getItem('extra_bo_files')||'[]'));
   const invExtras  = JSON.parse(localStorage.getItem('extra_inv_files')||'[]');
   const fcstExtras = JSON.parse(localStorage.getItem('extra_fcst_files')||'[]');
   const ilExtras   = JSON.parse(localStorage.getItem('extra_sto_israel_files')||'[]');
@@ -5098,21 +5105,16 @@ async function refreshAllFiles(){
         if(rExtras && rExtras.length > 0){
           const ts = new Date().toLocaleString();
           const existing = JSON.parse(localStorage.getItem('extra_bo_files')||'[]');
-          const existingNames = new Set(existing.map(e=>e.name));
           for(const entry of rExtras){
             try{
               const file = await entry.getFile();
               const det  = await _readBODetails(file);
-              const cKey = file.name.replace(/\.(xlsx?|csv)$/i,'').replace(/E2E_BO_/i,'').replace(/_/g,' ').trim().toUpperCase();
+              const cKey = _boExtraKey(file.name);
               COUNTRY_BO_MAP[cKey] = { totalQty:det.totalQty, totalVal:det.totalVal, cfnQty:det.cfnQty, cfnVal:det.cfnVal };
               if(det.cats) COUNTRY_OO_MAP[cKey] = det.cats;
-              if(!existingNames.has(file.name)){
-                existing.push({ name:file.name, at:ts, val:det.totalVal, qty:det.totalQty });
-                existingNames.add(file.name);
-              } else {
-                const rec=existing.find(e=>e.name===file.name);
-                if(rec){ rec.at=ts; rec.val=det.totalVal; rec.qty=det.totalQty; }
-              }
+              const rec=existing.find(e=>_boExtraKey(e.name)===cKey);
+              if(rec){ rec.name=file.name; rec.at=ts; rec.val=det.totalVal; rec.qty=det.totalQty; }
+              else existing.push({ name:file.name, at:ts, val:det.totalVal, qty:det.totalQty });
             }catch(e){}
           }
           try{ localStorage.setItem('extra_bo_files', JSON.stringify(existing)); }catch(ex){}
@@ -5701,21 +5703,16 @@ function checkInvBannerLoaded(){
     if(restoreExtras && restoreExtras.length>0){
       const ts = new Date().toLocaleString();
       const existing = JSON.parse(localStorage.getItem('extra_bo_files')||'[]');
-      const existingNames = new Set(existing.map(e=>e.name));
       for(const entry of restoreExtras){
         try{
           const file = await entry.getFile();
           const det  = await _readBODetails(file);
-          const cKey = file.name.replace(/\.xlsx$/i,'').replace(/E2E_BO_/i,'').replace(/_/g,' ').trim().toUpperCase();
+          const cKey = _boExtraKey(file.name);
           COUNTRY_BO_MAP[cKey] = { totalQty:det.totalQty, totalVal:det.totalVal, cfnQty:det.cfnQty, cfnVal:det.cfnVal };
           if(det.cats) COUNTRY_OO_MAP[cKey] = det.cats;
-          if(!existingNames.has(file.name)){
-            existing.push({ name:file.name, at:ts, val:det.totalVal, qty:det.totalQty });
-            existingNames.add(file.name);
-          } else {
-            const rec=existing.find(e=>e.name===file.name);
-            if(rec){ rec.at=ts; rec.val=det.totalVal; rec.qty=det.totalQty; }
-          }
+          const rec=existing.find(e=>_boExtraKey(e.name)===cKey);
+          if(rec){ rec.name=file.name; rec.at=ts; rec.val=det.totalVal; rec.qty=det.totalQty; }
+          else existing.push({ name:file.name, at:ts, val:det.totalVal, qty:det.totalQty });
         }catch(e2){}
       }
       try{ localStorage.setItem('extra_bo_files', JSON.stringify(existing)); }catch(ex){}
