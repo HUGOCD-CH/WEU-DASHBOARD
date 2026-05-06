@@ -1806,15 +1806,27 @@ function _buildFcstDemandCharts(q, mpgF, exactCFNs){
 
   // Quarter-aware month keys
   const qCfg     = QUARTER_CFG[_countryTableQuarter||'q4'];
-  const qMths    = qCfg.months;    // e.g. ['feb','mar','apr']
-  const qCemMths = qCfg.cemaMths;  // e.g. ['cema_feb','cema_mar','cema_apr']
-  const qLabels  = qCfg.labels;    // e.g. ['Feb','Mar','Apr']
+  const qMths    = qCfg.months;    // e.g. ['may27','jun27','jul27']
+  const qCemMths = qCfg.cemaMths;  // e.g. ['cema_may27','cema_jun27','cema_jul27']
+  const qLabels  = qCfg.labels;    // e.g. ['May','Jun','Jul']
+
+  // Quarterly chart mode: show Q3 FY26 | Q4 FY26 | Q1 FY27 as aggregated bars
+  const _qtrChart = _weuTableMode === 'quarterly';
+  const CHART_QTRS = [
+    { label:'Q3 FY26', months: QUARTER_CFG.q3.months,     cemaMths: QUARTER_CFG.q3.cemaMths     },
+    { label:'Q4 FY26', months: QUARTER_CFG.q4.months,     cemaMths: QUARTER_CFG.q4.cemaMths     },
+    { label:'Q1 FY27', months: QUARTER_CFG.q1fy27.months, cemaMths: QUARTER_CFG.q1fy27.cemaMths },
+  ];
+  const _chartLabels = _qtrChart ? CHART_QTRS.map(qg=>qg.label) : qLabels;
+  // Helper: sum a store's values across all months of a list of quarter groups
+  const _sumQ  = (store, qtrs) => qtrs.map(qg => qg.months.reduce((s,k)   => s+sumFor(store,k),   0));
+  const _sumCQ = (store, qtrs) => qtrs.map(qg => qg.cemaMths.reduce((s,k) => s+sumFor(store,k),   0));
 
   // WEU — all three lag tiers + demand (QTY)
-  const wL2=qMths.map(k=>sumFor(FCST_LAG2_DATA,k));
-  const wL1=qMths.map(k=>sumFor(FCST_LAG1_DATA,k));
-  const wL0=qMths.map(k=>sumFor(FCST_DATA,k));
-  const wD =qMths.map(k=>sumFor(DEMAND_DATA,k));
+  const wL2 = _qtrChart ? _sumQ(FCST_LAG2_DATA, CHART_QTRS) : qMths.map(k=>sumFor(FCST_LAG2_DATA,k));
+  const wL1 = _qtrChart ? _sumQ(FCST_LAG1_DATA, CHART_QTRS) : qMths.map(k=>sumFor(FCST_LAG1_DATA,k));
+  const wL0 = _qtrChart ? _sumQ(FCST_DATA,      CHART_QTRS) : qMths.map(k=>sumFor(FCST_DATA,k));
+  const wD  = _qtrChart ? _sumQ(DEMAND_DATA,     CHART_QTRS) : qMths.map(k=>sumFor(DEMAND_DATA,k));
   const wL2T=wL2.reduce((s,v)=>s+v,0), wL1T=wL1.reduce((s,v)=>s+v,0);
   const wL0T=wL0.reduce((s,v)=>s+v,0), wDT=wD.reduce((s,v)=>s+v,0);
 
@@ -1857,14 +1869,20 @@ function _buildFcstDemandCharts(q, mpgF, exactCFNs){
       const rk=selKey.toLowerCase().replace(/\s+/g,'_');
       return { l2:sumFor(FCST_LAG2_DATA,rk+'_'+m), l1:sumFor(FCST_LAG1_DATA,rk+'_'+m), l0:sumFor(FCST_DATA,rk+'_'+m), d:sumFor(DEMAND_DATA,rk+'_'+m) };
     };
-    const selData = qMths.map((m,i)=>_regionMonth(m, qCemMths[i]));
+    const selData = _qtrChart
+      ? CHART_QTRS.map(qg => {
+          const monthResults = qg.months.map((m,i) => _regionMonth(m, qg.cemaMths[i]));
+          return { l2:monthResults.reduce((s,x)=>s+x.l2,0), l1:monthResults.reduce((s,x)=>s+x.l1,0),
+                   l0:monthResults.reduce((s,x)=>s+x.l0,0), d: monthResults.reduce((s,x)=>s+x.d, 0) };
+        })
+      : qMths.map((m,i)=>_regionMonth(m, qCemMths[i]));
     cL2=selData.map(x=>x.l2); cL1=selData.map(x=>x.l1);
     cL0=selData.map(x=>x.l0); cD =selData.map(x=>x.d);
   } else {
-    cL2=qCemMths.map(k=>sumFor(FCST_LAG2_DATA,k));
-    cL1=qCemMths.map(k=>sumFor(FCST_LAG1_DATA,k));
-    cL0=qCemMths.map(k=>sumFor(FCST_DATA,k));
-    cD =qCemMths.map(k=>sumFor(DEMAND_DATA,k));
+    cL2 = _qtrChart ? _sumCQ(FCST_LAG2_DATA, CHART_QTRS) : qCemMths.map(k=>sumFor(FCST_LAG2_DATA,k));
+    cL1 = _qtrChart ? _sumCQ(FCST_LAG1_DATA, CHART_QTRS) : qCemMths.map(k=>sumFor(FCST_LAG1_DATA,k));
+    cL0 = _qtrChart ? _sumCQ(FCST_DATA,      CHART_QTRS) : qCemMths.map(k=>sumFor(FCST_DATA,k));
+    cD  = _qtrChart ? _sumCQ(DEMAND_DATA,     CHART_QTRS) : qCemMths.map(k=>sumFor(DEMAND_DATA,k));
   }
   const cL2T=cL2.reduce((s,v)=>s+v,0), cL1T=cL1.reduce((s,v)=>s+v,0);
   const cL0T=cL0.reduce((s,v)=>s+v,0), cDT=cD.reduce((s,v)=>s+v,0);
@@ -2008,7 +2026,7 @@ function _buildFcstDemandCharts(q, mpgF, exactCFNs){
   }
   // WEU monthly chart — Lag2 / Lag1 / Lag0 / Demand + CONS% line
   weuFcstCI=new Chart(document.getElementById('weuFcstChart'),{
-    data:{labels:qLabels,datasets:[
+    data:{labels:_chartLabels,datasets:[
       barDs('Fcst Lag 2',wL2,C_L2),
       barDs('Fcst Lag 1',wL1,C_L1),
       barDs('Fcst Lag 0',wL0,C_L0),
@@ -2034,7 +2052,7 @@ function _buildFcstDemandCharts(q, mpgF, exactCFNs){
 
   // Right-panel monthly chart — selected region or CEMA
   cemaFcstCI=new Chart(document.getElementById('cemaFcstChart'),{
-    data:{labels:qLabels,datasets:[
+    data:{labels:_chartLabels,datasets:[
       barDs('Fcst Lag 2',cL2,C_L2),
       barDs('Fcst Lag 1',cL1,C_L1),
       barDs('Fcst Lag 0',cL0,C_L0),
@@ -2190,6 +2208,7 @@ function setWeuTableMode(mode){
   const q   = (document.getElementById('global-cfn')||{value:''}).value.trim().toLowerCase();
   const mpgF= (document.getElementById('global-mpg')||{value:''}).value;
   buildCountryCards(q, mpgF, (typeof cfnSelectedSet!=='undefined'&&cfnSelectedSet.length>0)?cfnSelectedSet:[]);
+  buildFcstDemandCharts();
 }
 
 function updateSectionTitles(){
