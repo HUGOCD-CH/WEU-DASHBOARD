@@ -584,6 +584,12 @@ body.dark-mode .country-cards-empty{color:#5a7a9a;}
           <button id="cquarter-btn-q3" class="lag-btn" onclick="setCountryQuarter('q3')">Q3</button>
           <button id="cquarter-btn-q4" class="lag-btn" onclick="setCountryQuarter('q4')">Q4</button>
         </div>
+        <div id="cweumode-toggle" style="display:flex;gap:0;border:1.5px solid #d0dff0;border-radius:8px;overflow:hidden;font-size:11px;font-weight:700;">
+          <button id="cweumode-btn-monthly" onclick="setWeuTableMode('monthly')"
+            style="padding:3px 12px;border:none;cursor:pointer;background:#0056a3;color:#fff;letter-spacing:.3px;">Monthly</button>
+          <button id="cweumode-btn-quarterly" onclick="setWeuTableMode('quarterly')"
+            style="padding:3px 12px;border:none;cursor:pointer;background:#f0f4f8;color:#5a7a9a;letter-spacing:.3px;">Quarterly</button>
+        </div>
         <div id="creg-toggle" style="display:flex;gap:0;border:1.5px solid #d0dff0;border-radius:8px;overflow:hidden;font-size:11px;font-weight:700;">
           <button id="creg-btn-global" onclick="setCountryView('global')"
             style="padding:3px 12px;border:none;cursor:pointer;background:#f0f4f8;color:#5a7a9a;letter-spacing:.3px;">GLOBAL</button>
@@ -1504,6 +1510,13 @@ function buildCountryCards(q, mpgF, exactCFNs){
   const hasFilter = selUpper.length>0 || !!q || !!mpgF;
   const qCfg = QUARTER_CFG[_countryTableQuarter||'q4'];
   const qMonths = qCfg.months;
+  const _isQtrMode = _weuTableMode === 'quarterly';
+  // FY26 quarter definitions used in quarterly view
+  const FY26_QUARTERS = [
+    { label:'Q2 FY26', months: QUARTER_CFG.q2.months },
+    { label:'Q3 FY26', months: QUARTER_CFG.q3.months },
+    { label:'Q4 FY26', months: QUARTER_CFG.q4.months },
+  ];
   const [m0,m1,m2] = qMonths;
   const lag = (typeof _countryTableLag!=='undefined') ? _countryTableLag : 'lag0';
   // Ship% — only shown when current calendar month is within the selected quarter
@@ -1559,7 +1572,18 @@ function buildCountryCards(q, mpgF, exactCFNs){
       }
       const qTotalFcst=mFcst[m0]+mFcst[m1]+mFcst[m2];
       const qTotalDem=mDem[m0]+mDem[m1]+mDem[m2];
-      return {cKey,flag,boQty,boVal,mFcst,mDem,qTotalFcst,qTotalDem};
+      // Quarterly view: sum FY26 Q2/Q3/Q4 from COUNTRY_FCST_MAP (always Lag 0 + Demand)
+      const qArr = FY26_QUARTERS.map(qg => {
+        let qf=0, qd=0;
+        if(fcm){ qg.months.forEach(m=>{ const me=fcm[m]; if(!me) return;
+          if(hasFilter){
+            Object.entries(me.cfnFcst||{}).forEach(([c,v])=>{ if(cfnMatch(c)) qf+=parseFloat(v)||0; });
+            Object.entries(me.cfnDemand||{}).forEach(([c,v])=>{ if(cfnMatch(c)) qd+=parseFloat(v)||0; });
+          } else { qf+=me.totalFcst||0; qd+=me.totalDemand||0; }
+        }); }
+        return {fcst:qf, dem:qd};
+      });
+      return {cKey,flag,boQty,boVal,mFcst,mDem,qTotalFcst,qTotalDem,qArr};
     })
     .filter(r=>!hasFilter||r.boQty>0||r.boVal>0||r.qTotalFcst>0)
     .sort((a,b)=>b.boVal-a.boVal);
@@ -1576,24 +1600,26 @@ function buildCountryCards(q, mpgF, exactCFNs){
   const ths='padding:5px 6px;white-space:nowrap;font-size:10px;';
   const thsN=ths+'text-align:right;';
   const groupHdr='text-align:center;background:#004080;border-bottom:1px solid rgba(255,255,255,.25);';
+  const _qtrGroupHdrs = _isQtrMode
+    ? FY26_QUARTERS.map(qg=>`<th colspan="2" style="${ths+groupHdr}">${qg.label}</th>`).join('')
+    : [`${lbl0}`,`${lbl1}`,`${lbl2}`].map(l=>`<th colspan="2" style="${ths+groupHdr}">${l}</th>`).join('');
+  const _qtrSubHdrs = _isQtrMode
+    ? FY26_QUARTERS.map(()=>`<th style="${thsN}">Fcst</th><th style="${thsN}">Dem</th>`).join('')
+    : `<th style="${thsN}">${lagLbl}</th><th style="${thsN}">Dem</th><th style="${thsN}">${lagLbl}</th><th style="${thsN}">Dem</th><th style="${thsN}">${lagLbl}</th><th style="${thsN}">Dem</th>`;
   let html=`<table style="font-size:11px;border-collapse:collapse;width:100%">
   <thead>
     <tr>
       <th rowspan="2" style="${ths}">Country</th>
       <th rowspan="2" style="${thsN}">BO Val ($)</th>
       <th rowspan="2" style="${thsN}">BO Qty</th>
-      <th colspan="2" style="${ths+groupHdr}">${lbl0}</th>
-      <th colspan="2" style="${ths+groupHdr}">${lbl1}</th>
-      <th colspan="2" style="${ths+groupHdr}">${lbl2}</th>
+      ${_qtrGroupHdrs}
       <th colspan="2" style="${ths+groupHdr}">${qCfg.label} Total</th>
       <th rowspan="2" style="${thsN}">BO %</th>
       <th rowspan="2" style="${thsN}">Cons. %</th>
       ${_showShip?`<th rowspan="2" style="${thsN}background:#854d0e;color:#fef08a;">Ship. %</th>`:''}
     </tr>
     <tr>
-      <th style="${thsN}">${lagLbl}</th><th style="${thsN}">Dem</th>
-      <th style="${thsN}">${lagLbl}</th><th style="${thsN}">Dem</th>
-      <th style="${thsN}">${lagLbl}</th><th style="${thsN}">Dem</th>
+      ${_qtrSubHdrs}
       <th style="${thsN}">Fcst</th><th style="${thsN}">Dem</th>
     </tr>
   </thead><tbody>`;
@@ -1617,12 +1643,16 @@ function buildCountryCards(q, mpgF, exactCFNs){
       const mr = _grpRowsMap[g.key];
       const s = fn => mr.reduce((a,r)=>a+fn(r),0);
       const qTF=s(r=>r.qTotalFcst), qTD=s(r=>r.qTotalDem), bQ=s(r=>r.boQty);
+      const qArr = FY26_QUARTERS.map((_,qi)=>({
+        fcst: mr.reduce((a,r)=>a+(r.qArr?.[qi]?.fcst||0),0),
+        dem:  mr.reduce((a,r)=>a+(r.qArr?.[qi]?.dem||0), 0),
+      }));
       return {
         isGroup:true, cKey:g.key, label:g.label, memberRows:mr,
         boQty:bQ, boVal:s(r=>r.boVal),
         mFcst:{[m0]:s(r=>r.mFcst[m0]),[m1]:s(r=>r.mFcst[m1]),[m2]:s(r=>r.mFcst[m2])},
         mDem: {[m0]:s(r=>r.mDem[m0]), [m1]:s(r=>r.mDem[m1]), [m2]:s(r=>r.mDem[m2])},
-        qTotalFcst:qTF, qTotalDem:qTD,
+        qTotalFcst:qTF, qTotalDem:qTD, qArr,
       };
     });
 
@@ -1642,13 +1672,17 @@ function buildCountryCards(q, mpgF, exactCFNs){
     const consSty=consPct!==null?(consPct>=100?'color:#28a745;font-weight:700':consPct>=80?'color:#f0a500;font-weight:700':'color:#d9534f;font-weight:700'):'';
     const tdx=td+extraTdStyle;
     const tdxN=tdn+extraTdStyle;
+    const middleCols = _isQtrMode
+      ? (r.qArr||FY26_QUARTERS.map(()=>({fcst:0,dem:0}))).map(({fcst,dem})=>
+          `<td style="${tdxN}">${fmtQ(fcst)}</td><td style="${tdxN}">${fmtQ(dem)}</td>`).join('')
+      : `<td style="${tdxN}">${fmtQ(r.mFcst[m0])}</td><td style="${tdxN}">${fmtQ(r.mDem[m0])}</td>`+
+        `<td style="${tdxN}">${fmtQ(r.mFcst[m1])}</td><td style="${tdxN}">${fmtQ(r.mDem[m1])}</td>`+
+        `<td style="${tdxN}">${fmtQ(r.mFcst[m2])}</td><td style="${tdxN}">${fmtQ(r.mDem[m2])}</td>`;
     return `<tr style="cursor:pointer;${rowBg}" onclick="${clickHandler}">
       <td style="${tdx}white-space:nowrap">${indentLabel}</td>
       <td style="${tdxN}">${fmtV(r.boVal)}</td>
       <td style="${tdxN}">${fmtQ(r.boQty)}</td>
-      <td style="${tdxN}">${fmtQ(r.mFcst[m0])}</td><td style="${tdxN}">${fmtQ(r.mDem[m0])}</td>
-      <td style="${tdxN}">${fmtQ(r.mFcst[m1])}</td><td style="${tdxN}">${fmtQ(r.mDem[m1])}</td>
-      <td style="${tdxN}">${fmtQ(r.mFcst[m2])}</td><td style="${tdxN}">${fmtQ(r.mDem[m2])}</td>
+      ${middleCols}
       <td style="${tdxN}font-weight:600;color:#0056a3">${fmtQ(r.qTotalFcst)}</td>
       <td style="${tdxN}font-weight:600;color:#1a5c35">${fmtQ(r.qTotalDem)}</td>
       <td style="${tdxN+boPctSty}">${fmtPct(boPct)}</td>
@@ -2038,6 +2072,7 @@ const QUARTER_CFG = {
 };
 // Country table quarter selection
 let _countryTableQuarter = 'q1fy27';
+let _weuTableMode = 'monthly'; // 'monthly' | 'quarterly'
 // Country group definitions for WEU view
 const COUNTRY_GROUPS = [
   { key:'FRANCE_GROUP',  label:'🇫🇷 France Group',  members:['FRANCE','REUNION','GUADELOUPE','MARTINIQUE','MAYOTTE','NEW CALEDONIA','SAINT MARTIN','ST. HELENA','FRENCH POLYNES','FRENCH POLYNES.'] },
@@ -2134,6 +2169,24 @@ function setCountryView(v){
   const bw = document.getElementById('creg-btn-weu');
   if(bg) bg.style.cssText = v==='global' ? activeSty : inactiveSty;
   if(bw) bw.style.cssText = v==='weu'    ? activeSty : inactiveSty;
+  const mt = document.getElementById('cweumode-toggle');
+  if(mt) mt.style.display = v==='weu' ? 'flex' : 'none';
+  const q   = (document.getElementById('global-cfn')||{value:''}).value.trim().toLowerCase();
+  const mpgF= (document.getElementById('global-mpg')||{value:''}).value;
+  buildCountryCards(q, mpgF, (typeof cfnSelectedSet!=='undefined'&&cfnSelectedSet.length>0)?cfnSelectedSet:[]);
+}
+
+function setWeuTableMode(mode){
+  _weuTableMode = mode;
+  const dark = document.body.classList.contains('dark-mode');
+  const activeSty  = 'padding:3px 12px;border:none;cursor:pointer;background:#0056a3;color:#fff;letter-spacing:.3px;';
+  const inactiveSty= dark
+    ? 'padding:3px 12px;border:none;cursor:pointer;background:#1d2a40;color:#6a90b0;letter-spacing:.3px;'
+    : 'padding:3px 12px;border:none;cursor:pointer;background:#f0f4f8;color:#5a7a9a;letter-spacing:.3px;';
+  const bm = document.getElementById('cweumode-btn-monthly');
+  const bq = document.getElementById('cweumode-btn-quarterly');
+  if(bm) bm.style.cssText = mode==='monthly'   ? activeSty : inactiveSty;
+  if(bq) bq.style.cssText = mode==='quarterly' ? activeSty : inactiveSty;
   const q   = (document.getElementById('global-cfn')||{value:''}).value.trim().toLowerCase();
   const mpgF= (document.getElementById('global-mpg')||{value:''}).value;
   buildCountryCards(q, mpgF, (typeof cfnSelectedSet!=='undefined'&&cfnSelectedSet.length>0)?cfnSelectedSet:[]);
