@@ -695,7 +695,7 @@ body.dark-mode .country-cards-empty{color:#5a7a9a;}
         </div>
         <div class="bodev-table-scroll">
         <table>
-          <thead><tr><th>CFN</th><th>Current BO $</th><th>2-Wk Dev %</th><th>$ Impact</th><th>WEU FCST CONS %</th><th>CEMA FCST CONS %</th><th>WEU FCST SHIP %</th><th>CEMA FCST SHIP %</th></tr></thead>
+          <thead><tr><th>CFN</th><th>Current BO $</th><th>2-Wk Dev %</th><th>$ Impact</th><th>WEU FCST CONS %<br><span style="font-weight:400;font-size:9px;opacity:.7">Q1 FY27</span></th><th>CEMA FCST CONS %<br><span style="font-weight:400;font-size:9px;opacity:.7">Q1 FY27</span></th><th>WEU FCST SHIP %<br><span style="font-weight:400;font-size:9px;opacity:.7">Q1 FY27</span></th><th>CEMA FCST SHIP %<br><span style="font-weight:400;font-size:9px;opacity:.7">Q1 FY27</span></th></tr></thead>
           <tbody id="bodev-table-body"></tbody>
         </table>
         </div>
@@ -2429,14 +2429,16 @@ function renderBODevTable(){
   document.getElementById('bodev-table-body').innerHTML=items.slice(0,40).map(r=>{
     const weuBoQty =r.BO_QTY||0;
     const cemaBoQty=CEMA_BO_QTY_MAP[r.CFN]||0; // from E2E_BO_CEMA file
-    // WEU FCST CONS % = sum(WEU Demand) / sum(WEU Forecast)
-    const weuFcst  =(FCST_DATA.feb?.[r.CFN]||0)+(FCST_DATA.mar?.[r.CFN]||0)+(FCST_DATA.apr?.[r.CFN]||0);
-    const weuDemand=(DEMAND_DATA.feb?.[r.CFN]||0)+(DEMAND_DATA.mar?.[r.CFN]||0)+(DEMAND_DATA.apr?.[r.CFN]||0);
+    // WEU FCST CONS % / SHIP % — Q1 FY27 (May/Jun/Jul)
+    const [_wm0,_wm1,_wm2] = QUARTER_CFG.q1fy27.months;     // may27,jun27,jul27
+    const [_cm0,_cm1,_cm2] = QUARTER_CFG.q1fy27.cemaMths;   // cema_may27,cema_jun27,cema_jul27
+    const weuFcst  =(FCST_DATA[_wm0]?.[r.CFN]||0)+(FCST_DATA[_wm1]?.[r.CFN]||0)+(FCST_DATA[_wm2]?.[r.CFN]||0);
+    const weuDemand=(DEMAND_DATA[_wm0]?.[r.CFN]||0)+(DEMAND_DATA[_wm1]?.[r.CFN]||0)+(DEMAND_DATA[_wm2]?.[r.CFN]||0);
     const weuConsPct =weuFcst>0?(weuDemand/weuFcst*100):null;
     const weuShipPct =weuFcst>0?((weuDemand-weuBoQty)/weuFcst*100):null;
-    // CEMA FCST CONS % = sum(CEMA Demand) / sum(CEMA Forecast)
-    const cemaFcst  =(FCST_DATA.cema_feb?.[r.CFN]||0)+(FCST_DATA.cema_mar?.[r.CFN]||0)+(FCST_DATA.cema_apr?.[r.CFN]||0);
-    const cemaDemand=(DEMAND_DATA.cema_feb?.[r.CFN]||0)+(DEMAND_DATA.cema_mar?.[r.CFN]||0)+(DEMAND_DATA.cema_apr?.[r.CFN]||0);
+    // CEMA FCST CONS % / SHIP % — Q1 FY27
+    const cemaFcst  =(FCST_DATA[_cm0]?.[r.CFN]||0)+(FCST_DATA[_cm1]?.[r.CFN]||0)+(FCST_DATA[_cm2]?.[r.CFN]||0);
+    const cemaDemand=(DEMAND_DATA[_cm0]?.[r.CFN]||0)+(DEMAND_DATA[_cm1]?.[r.CFN]||0)+(DEMAND_DATA[_cm2]?.[r.CFN]||0);
     const cemaConsPct=cemaFcst>0?(cemaDemand/cemaFcst*100):null;
     const cemaShipPct=cemaFcst>0?((cemaDemand-cemaBoQty)/cemaFcst*100):null;
     // Formatter — no decimals, same colour scale for all four % columns
