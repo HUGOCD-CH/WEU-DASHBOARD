@@ -2973,6 +2973,7 @@ let rorFiltered=[...ROR_DATA],rorPage=1,rorSortCol='BO_Value',rorSortDir=-1;
 let _rorCountryKey=''; // '' = WEU only; group key e.g. 'FRANCE_GROUP' when selected
 let _rorCtryMap={}; // per-CFN country aggregation, rebuilt in filterROR before sort
 let _rorQ1Map={}; // per-CFN Q1 FY27 FCST/Demand, rebuilt in filterROR before sort
+let _rorIsrMap={}; // per-CFN Israel data, rebuilt in filterROR before sort
 
 // Fixed column definitions for the sortable ROR thead
 const ROR_COLS=[
@@ -3063,6 +3064,8 @@ function filterROR(){
   rorFiltered.forEach(r=>{ r.WoC=r.Weekly_Demand>0?Math.round(r.Stock_EA/r.Weekly_Demand*10)/10:null; });
   // Rebuild country map (needed for country-col sort)
   _buildRorCtryMap();
+  // Rebuild Israel map (needed for Israel-col sort)
+  _buildRorIsrMap();
   // Rebuild Q1 FY27 FCST map (needed for Q1 FCST Cons.% sort)
   _rorQ1Map={};
   if(typeof FCST_DATA!=='undefined'&&typeof DEMAND_DATA!=='undefined'&&typeof QUARTER_CFG!=='undefined'){
@@ -3074,11 +3077,21 @@ function filterROR(){
   // Column sort (null values sink to bottom)
   const _cSortFld={_cBO:'bo',_cBOV:'boVal',_cPD:'pd',_cFD:'fd',_cOOB:'oob',
     _cBoPct:'boPct',_cStock:'expStock',_cShip:'expShip',_cWkly:'wklyDem',_cImpact:'expImpact',_cQ4:'q4Frac'};
+  // Israel column → _rorIsrMap field mapping
+  const _isrColFld={BO_QTY:'bo',BO_Value:'boVal',PastDue_QTY:'pd',FutureDue_QTY:'fd',OOB_QTY:'oob',
+    Stock_EA:'stock',Shipments_2wk:'ship',Weekly_Demand:'wkly',WoC:'woc',
+    BO_Dev_2wk:'dev',BO_Impact_2wk:'impact'};
   if(rorSortCol){
     rorFiltered.sort((a,b)=>{
       const cf=_cSortFld[rorSortCol];
       let av,bv;
-      if(cf){
+      if(_rorCountryKey==='ISRAEL'){
+        const isf=rorSortCol==='_q4fcst'?'q4Frac':_isrColFld[rorSortCol];
+        if(isf!==undefined){
+          av=_rorIsrMap[(a.CFN||'').toUpperCase()]?.[isf];
+          bv=_rorIsrMap[(b.CFN||'').toUpperCase()]?.[isf];
+        } else { av=a[rorSortCol]; bv=b[rorSortCol]; }
+      } else if(cf){
         av=_rorCtryMap[(a.CFN||'').toUpperCase()]?.[cf];
         bv=_rorCtryMap[(b.CFN||'').toUpperCase()]?.[cf];
       } else if(rorSortCol==='_q4fcst'){
@@ -3128,6 +3141,42 @@ function _buildRorCtryMap(){
     };
   });
 }
+function _buildRorIsrMap(){
+  _rorIsrMap={};
+  if(_rorCountryKey!=='ISRAEL'||typeof COUNTRY_OO_MAP==='undefined') return;
+  const isrOO=(COUNTRY_OO_MAP['ISRAEL'])||{};
+  const qMths=(typeof QUARTER_CFG!=='undefined')?QUARTER_CFG.q1fy27.months:[];
+  const _pStart=new Date(new Date().getFullYear(),0,24);
+  const _wksPassed=Math.max(1,(new Date()-_pStart)/(7*24*60*60*1000));
+  rorFiltered.forEach(r=>{
+    const cfn=(r.CFN||'').toUpperCase(); if(_rorIsrMap[cfn]) return;
+    const isrBO  =isrOO.bo?.cfnQty?.[cfn]||0;
+    const isrBOV =isrOO.bo?.cfnVal?.[cfn]||0;
+    const isrPD  =isrOO.pastdue?.cfnQty?.[cfn]||0;
+    const isrFD  =isrOO.future?.cfnQty?.[cfn]||0;
+    const isrOOB =isrOO.total?.cfnQty?.[cfn]||0;
+    const isrOOBV=isrOO.total?.cfnVal?.[cfn]||0;
+    const isrStock=INV_ISRAEL_MAP[cfn]??null;
+    const isrShip =STO_ISRAEL_SHIP2WK[cfn]??null;
+    const fcmIsr=(typeof COUNTRY_FCST_MAP!=='undefined')?COUNTRY_FCST_MAP['ISRAEL']:null;
+    const isrDem =fcmIsr?qMths.reduce((s,mm)=>s+(fcmIsr[mm]?.cfnDemand?.[cfn]||0),0):0;
+    const isrFcst=fcmIsr?qMths.reduce((s,mm)=>s+(fcmIsr[mm]?.cfnFcst?.[cfn]||0),0):0;
+    const isrWkly=Math.round(isrDem/_wksPassed*10)/10;
+    const isrWoC =isrWkly>0&&isrStock!=null?Math.round((isrStock/isrWkly)*10)/10:null;
+    const isrBoCur=isrBO+isrPD;
+    const isrAsp  =isrOOB>0?isrOOBV/isrOOB:0;
+    const isrBo2wk=Math.max(isrBoCur+2*isrWkly-(isrStock||0)-(isrShip||0),0);
+    const isrBoV2w=Math.round(isrBo2wk*isrAsp*100)/100;
+    const MAX_DEV=3.0;
+    let isrDev=null,isrImpact=null;
+    if(isrBoCur>0){ isrDev=Math.min(isrBo2wk/isrBoCur-1,MAX_DEV); isrImpact=Math.round((isrBoV2w-isrBOV)*100)/100; }
+    else if(isrBo2wk>0){ isrDev=MAX_DEV; isrImpact=Math.round(isrBoV2w*100)/100; }
+    const isrQ4Frac=isrFcst>0?isrDem/isrFcst:null;
+    _rorIsrMap[cfn]={bo:isrBO,boVal:isrBOV,pd:isrPD,fd:isrFD,oob:isrOOB,
+      stock:isrStock,ship:isrShip,wkly:isrWkly,woc:isrWoC,
+      dev:isrDev,impact:isrImpact,q4Frac:isrQ4Frac};
+  });
+}
 function renderROR(){
   const s=(rorPage-1)*PAGE_SIZE;
   document.getElementById('ror-result-count').textContent=rorFiltered.length+' items';
@@ -3166,43 +3215,8 @@ function renderROR(){
 
   // Country aggregation already built by filterROR() into _rorCtryMap
 
-  // ── Israel per-CFN precomputation ──────────────────────────────────────────
-  const _isrMap={};
-  if(_isIsrael){
-    const isrOO=(typeof COUNTRY_OO_MAP!=='undefined'&&COUNTRY_OO_MAP['ISRAEL'])||{};
-    const qMths=(typeof QUARTER_CFG!=='undefined')?QUARTER_CFG.q1fy27.months:[];
-    const _pStart=new Date(new Date().getFullYear(),0,24);
-    const _wksPassed=Math.max(1,(new Date()-_pStart)/(7*24*60*60*1000));
-    rorFiltered.forEach(r=>{
-      const cfn=(r.CFN||'').toUpperCase(); if(_isrMap[cfn]) return;
-      const isrBO  =isrOO.bo?.cfnQty?.[cfn]||0;
-      const isrBOV =isrOO.bo?.cfnVal?.[cfn]||0;
-      const isrPD  =isrOO.pastdue?.cfnQty?.[cfn]||0;
-      const isrFD  =isrOO.future?.cfnQty?.[cfn]||0;
-      const isrOOB =isrOO.total?.cfnQty?.[cfn]||0;
-      const isrOOBV=isrOO.total?.cfnVal?.[cfn]||0;
-      const isrStock=INV_ISRAEL_MAP[cfn]??null;
-      const isrShip =STO_ISRAEL_SHIP2WK[cfn]??null;
-      const fcmIsr=(typeof COUNTRY_FCST_MAP!=='undefined')?COUNTRY_FCST_MAP['ISRAEL']:null;
-      const isrDem =fcmIsr?qMths.reduce((s,mm)=>s+(fcmIsr[mm]?.cfnDemand?.[cfn]||0),0):0;
-      const isrFcst=fcmIsr?qMths.reduce((s,mm)=>s+(fcmIsr[mm]?.cfnFcst?.[cfn]||0),0):0;
-      const isrWkly=Math.round(isrDem/_wksPassed*10)/10;
-      const isrWoC =isrWkly>0&&isrStock!=null?Math.round((isrStock/isrWkly)*10)/10:null;
-      // Dev% and $ Impact (same formula as recalcRORDevImpact but Israel-specific)
-      const isrBoCur=isrBO+isrPD;
-      const isrAsp  =isrOOB>0?isrOOBV/isrOOB:0;
-      const isrBo2wk=Math.max(isrBoCur+2*isrWkly-(isrStock||0)-(isrShip||0),0);
-      const isrBoV2w=Math.round(isrBo2wk*isrAsp*100)/100;
-      const MAX_DEV=3.0;
-      let isrDev=null,isrImpact=null;
-      if(isrBoCur>0){ isrDev=Math.min(isrBo2wk/isrBoCur-1,MAX_DEV); isrImpact=Math.round((isrBoV2w-isrBOV)*100)/100; }
-      else if(isrBo2wk>0){ isrDev=MAX_DEV; isrImpact=Math.round(isrBoV2w*100)/100; }
-      const isrQ4Frac=isrFcst>0?isrDem/isrFcst:null;
-      _isrMap[cfn]={bo:isrBO,boVal:isrBOV,pd:isrPD,fd:isrFD,oob:isrOOB,
-        stock:isrStock,ship:isrShip,wkly:isrWkly,woc:isrWoC,
-        dev:isrDev,impact:isrImpact,q4Frac:isrQ4Frac};
-    });
-  }
+  // ── Israel per-CFN data — built in filterROR() → _rorIsrMap ──────────────
+  const _isrMap=_rorIsrMap;
 
   // Active week keys for Israel (from STO_ISRAEL_WEEK_MAP instead of STO WEU)
   const israelWeekKeys=_isIsrael
