@@ -3000,9 +3000,6 @@ function _populateRORCountryDropdown(){
   if(!csel||typeof COUNTRY_GROUPS==='undefined') return;
   csel.innerHTML='<option value="">— All WEU —</option>';
   COUNTRY_GROUPS.forEach(g=>{const o=document.createElement('option');o.value=g.key;o.textContent=g.label;csel.appendChild(o);});
-  // Israel — special country with dedicated INV and STO files
-  const ilSep=document.createElement('option');ilSep.disabled=true;ilSep.textContent='── Special ──';csel.appendChild(ilSep);
-  const ilOpt=document.createElement('option');ilOpt.value='ISRAEL';ilOpt.textContent='🇮🇱 Israel';csel.appendChild(ilOpt);
   // Individual WEU countries: exclude group members (already represented) and non-WEU
   const _weuExclude=new Set(['ISRAEL','USA','CEMA','LATIN AMERICA','JAPAN','KOREA','INDIA','RUSSIA','ANZ','CANADA','SEA','CHINA','HONG KONG','TAIWAN','HONG KONG AND TAIWAN']);
   const allCtrys=Object.keys(COUNTRY_OO_MAP||{})
@@ -3017,6 +3014,9 @@ function _populateRORCountryDropdown(){
       csel.appendChild(o);
     });
   }
+  // Israel — special country with dedicated INV and STO files (always at bottom)
+  const ilSep=document.createElement('option');ilSep.disabled=true;ilSep.textContent='── Special ──';csel.appendChild(ilSep);
+  const ilOpt=document.createElement('option');ilOpt.value='ISRAEL';ilOpt.textContent='🇮🇱 Israel';csel.appendChild(ilOpt);
   csel.value=_rorCountryKey;
 }
 function initROR(){
@@ -6267,10 +6267,15 @@ function _processSTOIsraelFile(file){
         const ws=wb.Sheets[wb.SheetNames[0]];
         const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:null});
         if(!rows||rows.length<2){resolve();return;}
-        const hdr=rows[0].map(h=>String(h||'').toLowerCase());
+        // Strip PowerBI-style outer brackets so [Total_Quantity_EA] → total_quantity_ea
+        const hdr=rows[0].map(h=>String(h||'').toLowerCase().replace(/^\[|\]$/g,''));
         const idxGrand =hdr.findIndex(h=>h.includes('isgrandtotal'));
-        const idxQty   =hdr.findIndex(h=>h.includes('buom'));
-        const idxCFN   =hdr.findIndex(h=>h.includes('cfn')||h.includes('prod_cfn'));
+        // Quantity: prefer numeric EA column over BUOM column (BUOM is often stored as
+        // text with a leading apostrophe by PowerBI exports, which breaks parseFloat)
+        const _qtyIdxs=hdr.reduce((arr,h,i)=>{if(h.includes('quantity')||h.includes('buom'))arr.push(i);return arr;},[]);
+        const idxQty = _qtyIdxs.find(i=>!hdr[i].includes('buom'))??_qtyIdxs[0]??-1;
+        // CFN: look for 'cfn', 'prod_cfn', or first 'viz_product' column (D in PowerBI exports)
+        const idxCFN   =hdr.findIndex(h=>h.includes('cfn')||h.includes('prod_cfn')||h.includes('viz_product'));
         const idxDate  =hdr.findIndex(h=>h.includes('delivery date')||h.includes('requested'));
         const idxStatus=hdr.findIndex(h=>h.includes('delivery status')||h.includes('status'));
         if(idxCFN<0||idxQty<0){resolve();return;}
@@ -6283,14 +6288,15 @@ function _processSTOIsraelFile(file){
           const grand=row[idxGrand];
           if(grand===true||String(grand).toLowerCase()==='true') continue;
           const cfn=String(row[idxCFN]||'').trim().toUpperCase(); if(!cfn||cfn==='NULL') continue;
-          const qty=parseFloat(row[idxQty])||0; if(!qty) continue;
-          // Filter in-transit rows
+          // Strip leading apostrophe (PowerBI text-stored numbers) before parsing
+          const qty=parseFloat(String(row[idxQty]||'').replace(/^'/,''))||0; if(!qty) continue;
+          // Filter in-transit rows (DC Order Processing rows are not yet shipped)
           if(idxStatus>=0){
             const st=String(row[idxStatus]||'').trim().toLowerCase();
-            if(st&&!st.includes('in transit')&&!st.includes('intransit')) continue;
+            if(st&&!st.includes('in transit')&&!st.includes('intransit')&&!st.includes('leg in')) continue;
           }
           const dateRaw=row[idxDate]; if(!dateRaw) continue;
-          let dt; if(dateRaw instanceof Date) dt=dateRaw; else{ const s=String(dateRaw).trim(); if(!s||s==='null') continue; dt=new Date(s); }
+          let dt; if(dateRaw instanceof Date) dt=dateRaw; else{ const s=String(dateRaw).trim().replace('T',' '); if(!s||s==='null') continue; dt=new Date(s); }
           if(isNaN(dt.getTime())) continue;
           // ISO week key
           const tmp=new Date(dt); tmp.setHours(0,0,0,0);
