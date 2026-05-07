@@ -807,6 +807,11 @@ const PAGE_SIZE=100;
 const WEEK_KEYS=["W2026_11", "W2026_12", "W2026_13", "W2026_14", "W2026_15", "W2026_16", "W2026_17"]
 const WEEK_LABELS={"W2026_11": "Wk 03-09", "W2026_12": "Wk 03-16", "W2026_13": "Wk 03-23", "W2026_14": "Wk 03-30", "W2026_15": "Wk 04-06", "W2026_16": "Wk 04-13", "W2026_17": "Wk 04-20"};
 const INV_NL_PRDLOC=new Set(); // CFNs with VIZ_APO_LOC_PROD='PRDLOC' in SAP_INV_NETHERLANDS
+const INV_ISRAEL_MAP={}; // CFN(uppercase)→qty, from SAP_INV_ISRAEL
+const STO_ISRAEL_WEEK_MAP={}; // CFN(uppercase)→{wkey:qty}, from STO_ISRAEL in-transit
+const STO_ISRAEL_SHIP2WK={}; // CFN(uppercase)→total in-transit qty (100%)
+let STO_ISRAEL_WEEK_KEYS=[]; // sorted week keys present in STO Israel
+const STO_ISRAEL_WEEK_LABELS={}; // wkey→label for Israel week columns
 // Generate ROR week column headers dynamically
 function initRORWeekHeaders(){
   const ths=document.getElementById('ror-week-headers');
@@ -3017,6 +3022,9 @@ function _populateRORCountryDropdown(){
   if(!csel||typeof COUNTRY_GROUPS==='undefined') return;
   csel.innerHTML='<option value="">— All WEU —</option>';
   COUNTRY_GROUPS.forEach(g=>{const o=document.createElement('option');o.value=g.key;o.textContent=g.label;csel.appendChild(o);});
+  // Israel — special country with dedicated INV and STO files
+  const ilSep=document.createElement('option');ilSep.disabled=true;ilSep.textContent='── Special ──';csel.appendChild(ilSep);
+  const ilOpt=document.createElement('option');ilOpt.value='ISRAEL';ilOpt.textContent='🇮🇱 Israel';csel.appendChild(ilOpt);
   // Individual WEU countries: exclude group members (already represented) and non-WEU
   const _weuExclude=new Set(['ISRAEL','USA','CEMA','LATIN AMERICA','JAPAN','KOREA','INDIA','RUSSIA','ANZ','CANADA','SEA','CHINA','HONG KONG','TAIWAN','HONG KONG AND TAIWAN']);
   const allCtrys=Object.keys(COUNTRY_OO_MAP||{})
@@ -3088,7 +3096,8 @@ function filterROR(){
 }
 function _buildRorCtryMap(){
   _rorCtryMap={};
-  if(!_rorCountryKey||typeof COUNTRY_OO_MAP==='undefined') return;
+  // Israel has its own precomputation in renderROR — skip the country map
+  if(!_rorCountryKey||_rorCountryKey==='ISRAEL'||typeof COUNTRY_OO_MAP==='undefined') return;
   const _cGrp=typeof COUNTRY_GROUPS!=='undefined'?COUNTRY_GROUPS.find(g=>g.key===_rorCountryKey):null;
   const _cMembers=_cGrp?_cGrp.members:[_rorCountryKey];
   if(!_cMembers.length) return;
@@ -3135,6 +3144,9 @@ function renderROR(){
   const _curMon=new Date(_today); _curMon.setDate(_today.getDate()-(_today.getDay()||7)+1);
   const activeWeekKeys=WEEK_KEYS.filter(k=>_wkMon(k)>=_curMon&&ROR_DATA.some(r=>r[k]!=null&&r[k]>0));
 
+  // Israel mode flag
+  const _isIsrael=_rorCountryKey==='ISRAEL';
+
   // Q1 FY27 Forecast Consumption %: Total Demand Q1 FY27 / Total FCST_Lag0 Q1 FY27
   const _q4Map={};
   if(typeof FCST_DATA!=='undefined'&&typeof DEMAND_DATA!=='undefined'&&typeof QUARTER_CFG!=='undefined'){
@@ -3145,32 +3157,79 @@ function renderROR(){
     });
   }
 
-  // Country group lookup
-  const _ctryGrp=_rorCountryKey&&typeof COUNTRY_GROUPS!=='undefined'
+  // Country group lookup (not used for Israel — Israel has its own path)
+  const _ctryGrp=(!_isIsrael)&&_rorCountryKey&&typeof COUNTRY_GROUPS!=='undefined'
     ?COUNTRY_GROUPS.find(g=>g.key===_rorCountryKey):null;
-  const _ctryActive=!!_rorCountryKey;
-  const _ctryMembers=_ctryGrp?_ctryGrp.members:(_ctryActive?[_rorCountryKey]:[]);
+  const _ctryActive=(!_isIsrael)&&!!_rorCountryKey;
   const _ctryLabel=_ctryGrp?_ctryGrp.label.replace(/^\S+\s*/,'')
     :(_ctryActive?_cflag(_rorCountryKey)+' '+_rorCountryKey.charAt(0)+_rorCountryKey.slice(1).toLowerCase():'');
 
   // Country aggregation already built by filterROR() into _rorCtryMap
 
+  // ── Israel per-CFN precomputation ──────────────────────────────────────────
+  const _isrMap={};
+  if(_isIsrael){
+    const isrOO=(typeof COUNTRY_OO_MAP!=='undefined'&&COUNTRY_OO_MAP['ISRAEL'])||{};
+    const qMths=(typeof QUARTER_CFG!=='undefined')?QUARTER_CFG.q1fy27.months:[];
+    const _pStart=new Date(new Date().getFullYear(),0,24);
+    const _wksPassed=Math.max(1,(new Date()-_pStart)/(7*24*60*60*1000));
+    rorFiltered.forEach(r=>{
+      const cfn=(r.CFN||'').toUpperCase(); if(_isrMap[cfn]) return;
+      const isrBO  =isrOO.bo?.cfnQty?.[cfn]||0;
+      const isrBOV =isrOO.bo?.cfnVal?.[cfn]||0;
+      const isrPD  =isrOO.pastdue?.cfnQty?.[cfn]||0;
+      const isrFD  =isrOO.future?.cfnQty?.[cfn]||0;
+      const isrOOB =isrOO.total?.cfnQty?.[cfn]||0;
+      const isrOOBV=isrOO.total?.cfnVal?.[cfn]||0;
+      const isrStock=INV_ISRAEL_MAP[cfn]??null;
+      const isrShip =STO_ISRAEL_SHIP2WK[cfn]??null;
+      const fcmIsr=(typeof COUNTRY_FCST_MAP!=='undefined')?COUNTRY_FCST_MAP['ISRAEL']:null;
+      const isrDem =fcmIsr?qMths.reduce((s,mm)=>s+(fcmIsr[mm]?.cfnDemand?.[cfn]||0),0):0;
+      const isrFcst=fcmIsr?qMths.reduce((s,mm)=>s+(fcmIsr[mm]?.cfnFcst?.[cfn]||0),0):0;
+      const isrWkly=Math.round(isrDem/_wksPassed*10)/10;
+      const isrWoC =isrWkly>0&&isrStock!=null?Math.round((isrStock/isrWkly)*10)/10:null;
+      // Dev% and $ Impact (same formula as recalcRORDevImpact but Israel-specific)
+      const isrBoCur=isrBO+isrPD;
+      const isrAsp  =isrOOB>0?isrOOBV/isrOOB:0;
+      const isrBo2wk=Math.max(isrBoCur+2*isrWkly-(isrStock||0)-(isrShip||0),0);
+      const isrBoV2w=Math.round(isrBo2wk*isrAsp*100)/100;
+      const MAX_DEV=3.0;
+      let isrDev=null,isrImpact=null;
+      if(isrBoCur>0){ isrDev=Math.min(isrBo2wk/isrBoCur-1,MAX_DEV); isrImpact=Math.round((isrBoV2w-isrBOV)*100)/100; }
+      else if(isrBo2wk>0){ isrDev=MAX_DEV; isrImpact=Math.round(isrBoV2w*100)/100; }
+      const isrQ4Frac=isrFcst>0?isrDem/isrFcst:null;
+      _isrMap[cfn]={bo:isrBO,boVal:isrBOV,pd:isrPD,fd:isrFD,oob:isrOOB,
+        stock:isrStock,ship:isrShip,wkly:isrWkly,woc:isrWoC,
+        dev:isrDev,impact:isrImpact,q4Frac:isrQ4Frac};
+    });
+  }
+
+  // Active week keys for Israel (from STO_ISRAEL_WEEK_MAP instead of STO WEU)
+  const israelWeekKeys=_isIsrael
+    ?STO_ISRAEL_WEEK_KEYS.filter(k=>_wkMon(k)>=_curMon&&Object.values(STO_ISRAEL_WEEK_MAP).some(m=>(m[k]||0)>0))
+    :[];
+  const displayWeekKeys=_isIsrael?israelWeekKeys:activeWeekKeys;
+
   // 2-row grouped thead
   const thead=document.getElementById('ror-thead');
   if(thead){
-    const N=activeWeekKeys.length;
+    const N=displayWeekKeys.length;
     const CSPAN=_ctryActive?11:0;
+    const DCcols=_isIsrael?1:4;
     const mdBg='background:#002244;color:#fff;font-size:11px;font-weight:700;text-align:center;position:sticky;top:0;z-index:4;padding:5px 6px;border:1px solid #224';
     const weBg='background:#1a4080;color:#fff;font-size:11px;font-weight:700;text-align:center;position:sticky;top:0;z-index:4;padding:5px 6px;border:1px solid #224';
     const cBg='background:#5a2080;color:#fff;font-size:11px;font-weight:700;text-align:center;position:sticky;top:0;z-index:4;padding:5px 6px;border:1px solid #422';
     const emBg='background:#1a6a3a;color:#fff;font-size:11px;font-weight:700;text-align:center;position:sticky;top:0;z-index:4;padding:5px 6px;border:1px solid #224';
     const itBg='background:#7a4000;color:#fff;font-size:11px;font-weight:700;text-align:center;position:sticky;top:0;z-index:4;padding:5px 6px;border:1px solid #224';
+    const weLabel=_isIsrael?'ISRAEL (BO* = BO + PAST DUE)':'WESTERN EUROPE (BO* = BO + PAST DUE)';
+    const emLabel=_isIsrael?'ISRAEL — STOCK (EA) available':'EMEA — STOCK (EA) available';
+    const itLabel=_isIsrael?'ISRAEL IN-TRANSIT SHIPMENTS (WEEKS)':'EMEA IN-TRANSIT SHIPMENTS (WEEKS)';
     const row1=`<tr>
       <th colspan="4" rowspan="2" style="${mdBg}">MASTER DATA</th>
-      <th colspan="12" style="${weBg}">WESTERN EUROPE (BO* = BO + PAST DUE)</th>
+      <th colspan="12" style="${weBg}">${weLabel}</th>
       ${_ctryActive?`<th colspan="${CSPAN}" style="${cBg}">${_ctryLabel.toUpperCase()}</th>`:''}
-      <th colspan="4" style="${emBg}">EMEA — STOCK (EA) available</th>
-      ${N>0?`<th colspan="${N}" style="${itBg}">EMEA IN-TRANSIT SHIPMENTS (WEEKS)</th>`:''}
+      <th colspan="${DCcols}" style="${emBg}">${emLabel}</th>
+      ${N>0?`<th colspan="${N}" style="${itBg}">${itLabel}</th>`:''}
     </tr>`;
     const lf=k=>`background:${rorSortCol===k?'#0a4a8a':'#003366'};color:#fff;cursor:pointer;user-select:none;padding:5px 6px;font-size:10px;white-space:pre-line;text-align:center;position:sticky;top:26px;z-index:3;border:1px solid #224`;
     const dfBg=`background:#1a6a3a;color:#fff;cursor:pointer;user-select:none;padding:5px 6px;font-size:10px;white-space:pre-line;text-align:center;position:sticky;top:26px;z-index:3;border:1px solid #1a6a3a`;
@@ -3190,11 +3249,11 @@ function renderROR(){
       const ind=rorSortCol===k?(rorSortDir>0?' ▲':' ▼'):'';
       return `<th style="${cf(k)}" onclick="sortROR('${k}')">${l}${ind}</th>`;
     }).join('');
-    const dcThs=ROR_COLS.slice(15).map(c=>{
-      const ind=rorSortCol===c.key?(rorSortDir>0?' ▲':' ▼'):'';
-      return `<th style="${dfBg}" onclick="sortROR('${c.key}')">${c.label}${ind}</th>`;
-    }).join('');
-    const wkThs=activeWeekKeys.map(k=>`<th style="${wfBg}">${WEEK_LABELS[k]||k}</th>`).join('');
+    // DC leaf headers: 1 col for Israel, 4 cols for WEU
+    const dcThs=_isIsrael
+      ?`<th style="${dfBg}">TEL AVIV (IL)\nDC 1338</th>`
+      :ROR_COLS.slice(15).map(c=>{ const ind=rorSortCol===c.key?(rorSortDir>0?' ▲':' ▼'):''; return `<th style="${dfBg}" onclick="sortROR('${c.key}')">${c.label}${ind}</th>`; }).join('');
+    const wkThs=displayWeekKeys.map(k=>`<th style="${wfBg}">${(_isIsrael?STO_ISRAEL_WEEK_LABELS[k]:WEEK_LABELS[k])||k}</th>`).join('');
     thead.innerHTML=row1+`<tr>${weThs}${q4Th}${ctryThs}${dcThs}${wkThs}</tr>`;
   }
 
@@ -3219,24 +3278,47 @@ function renderROR(){
       <td class="num">${cd.expImpact!=null?fmtImpact(cd.expImpact):'—'}</td>
       <td class="num" style="color:${cd.q4Frac!=null?(cd.q4Frac>=1?'#1e7e34':cd.q4Frac>=0.8?'#d68910':'#c0392b'):'#aaa'}">${cd.q4Frac!=null?(cd.q4Frac*100).toFixed(1)+'%':'—'}</td>
     `:'';
+    // For Israel mode: override blue section values with Israel-specific data
+    const ir=_isIsrael?(_isrMap[cfnUp]||{}):null;
+    const boQty  =_isIsrael?(ir.bo??0):r.BO_QTY;
+    const boVal  =_isIsrael?(ir.boVal??0):r.BO_Value;
+    const pdQty  =_isIsrael?(ir.pd??0):r.PastDue_QTY;
+    const fdQty  =_isIsrael?(ir.fd??0):r.FutureDue_QTY;
+    const oobQty =_isIsrael?(ir.oob??0):r.OOB_QTY;
+    const stockEA=_isIsrael?ir.stock:r.Stock_EA;
+    const ship2wk=_isIsrael?ir.ship:r.Shipments_2wk;
+    const wklyDem=_isIsrael?ir.wkly:r.Weekly_Demand;
+    const wocVal =_isIsrael?ir.woc:(r.WoC!==null&&r.WoC!==undefined?r.WoC:null);
+    const devVal =_isIsrael?ir.dev:r.BO_Dev_2wk;
+    const impVal =_isIsrael?ir.impact:r.BO_Impact_2wk;
+    // Q1 FCST Cons % for Israel uses COUNTRY_FCST_MAP['ISRAEL'] (via ir.q4Frac)
+    const q4PctIsr=_isIsrael?(ir.q4Frac!=null?Math.round(ir.q4Frac*1000)/10:null):q4Pct;
+    // DC cells
+    const dcTds=_isIsrael
+      ?`<td class="num">${stockEA!=null?fmt(stockEA):'—'}</td>`
+      :`<td class="num">${fmt(r.DC_Heerlen)}</td><td class="num">${fmt(r.DC_Rolo)}</td><td class="num">${fmt(r.DC_Alcala)}</td><td class="num">${fmt(r.DC_Kits)}</td>`;
+    // Week cells
+    const wkTds=_isIsrael
+      ?displayWeekKeys.map(k=>{ const v=(STO_ISRAEL_WEEK_MAP[cfnUp]||{})[k]; return `<td class="num">${v!=null&&v>0?fmt(v):'—'}</td>`; }).join('')
+      :displayWeekKeys.map(k=>`<td class="num">${r[k]!=null?fmt(r[k]):'—'}</td>`).join('');
     return `<tr>
       <td title="${esc(r.MPG||'')}" style="font-size:10px">${esc((r.MPG||'').replace(/^[A-Z0-9]+ - /,'').substring(0,16))}</td>
       <td><b>${esc(cfn)}</b></td>
       <td title="${esc(r.Description||'')}">${esc((r.Description||'').substring(0,24))}${(r.Description||'').length>24?'…':''}</td>
       <td style="font-size:10px;text-align:center;${allocClr}">${esc(r.Heerlen_Allocation||'—')}</td>
-      <td class="num" style="color:#c0392b;font-weight:600">${fmt(r.BO_QTY)}</td>
-      <td class="num" style="color:#c0392b">${fmtCur(r.BO_Value)}</td>
-      <td class="num">${fmt(r.PastDue_QTY)}</td><td class="num">${fmt(r.FutureDue_QTY)}</td><td class="num">${fmt(r.OOB_QTY)}</td>
-      <td class="num">${fmt(r.Stock_EA)}</td>
-      <td class="num" style="color:#1e7e34">${fmt(r.Shipments_2wk)}</td>
-      <td class="num">${fmt(r.Weekly_Demand)}</td>
-      <td class="num">${r.WoC!==null&&r.WoC!==undefined?r.WoC:'<span style="color:#aaa">—</span>'}</td>
-      <td class="num">${fmtPct(r.BO_Dev_2wk)}</td>
-      <td class="num">${fmtImpact(r.BO_Impact_2wk)}</td>
-      <td class="num" style="color:${q4Pct!==null?(q4Pct>=100?'#1e7e34':q4Pct>=80?'#d68910':'#c0392b'):'#aaa'}">${q4Pct!==null?q4Pct.toFixed(1)+'%':'—'}</td>
+      <td class="num" style="color:#c0392b;font-weight:600">${fmt(boQty)}</td>
+      <td class="num" style="color:#c0392b">${fmtCur(boVal)}</td>
+      <td class="num">${fmt(pdQty)}</td><td class="num">${fmt(fdQty)}</td><td class="num">${fmt(oobQty)}</td>
+      <td class="num">${stockEA!=null?fmt(stockEA):'—'}</td>
+      <td class="num" style="color:#1e7e34">${ship2wk!=null?fmt(ship2wk):'—'}</td>
+      <td class="num">${wklyDem!=null?fmt(wklyDem):'—'}</td>
+      <td class="num">${wocVal!==null&&wocVal!==undefined?wocVal:'<span style="color:#aaa">—</span>'}</td>
+      <td class="num">${fmtPct(devVal)}</td>
+      <td class="num">${fmtImpact(impVal)}</td>
+      <td class="num" style="color:${q4PctIsr!==null?(q4PctIsr>=100?'#1e7e34':q4PctIsr>=80?'#d68910':'#c0392b'):'#aaa'}">${q4PctIsr!==null?q4PctIsr.toFixed(1)+'%':'—'}</td>
       ${ctryTds}
-      <td class="num">${fmt(r.DC_Heerlen)}</td><td class="num">${fmt(r.DC_Rolo)}</td><td class="num">${fmt(r.DC_Alcala)}</td><td class="num">${fmt(r.DC_Kits)}</td>
-      ${activeWeekKeys.map(k=>`<td class="num">${r[k]!=null?fmt(r[k]):'—'}</td>`).join('')}
+      ${dcTds}
+      ${wkTds}
     </tr>`;
   }).join('');
   renderPagination('ror-pagination',rorFiltered.length,rorPage,p=>{rorPage=p;renderROR();});
@@ -3251,7 +3333,10 @@ async function exportRORToExcel(){
     const _wkMon=k=>{ const m=k.match(/W(\d+)_(\d+)/); if(!m) return new Date(0); const yr=+m[1],wk=+m[2],d=new Date(yr,0,4); d.setDate(d.getDate()-(d.getDay()||7)+1+(wk-1)*7); return d; };
     const _td=new Date(); _td.setHours(0,0,0,0);
     const _cm=new Date(_td); _cm.setDate(_td.getDate()-(_td.getDay()||7)+1);
-    const activeWkKeys=WEEK_KEYS.filter(k=>_wkMon(k)>=_cm&&ROR_DATA.some(r=>r[k]!=null&&r[k]>0));
+    const _xIsIsrael=_rorCountryKey==='ISRAEL';
+    const activeWkKeys=_xIsIsrael
+      ?STO_ISRAEL_WEEK_KEYS.filter(k=>_wkMon(k)>=_cm&&Object.values(STO_ISRAEL_WEEK_MAP).some(m=>(m[k]||0)>0))
+      :WEEK_KEYS.filter(k=>_wkMon(k)>=_cm&&ROR_DATA.some(r=>r[k]!=null&&r[k]>0));
     const N=activeWkKeys.length;
 
     // ── 2. Q1 FY27 FCST Cons. % — same calculation as Dashboard tab ───────────
@@ -3264,10 +3349,46 @@ async function exportRORToExcel(){
       });
     }
 
-    // ── 2b. Country group aggregation (mirrors renderROR logic) ───────────
-    const _xCtryGrp=_rorCountryKey&&typeof COUNTRY_GROUPS!=='undefined'
+    // ── 2b. Israel per-CFN precomputation (mirrors renderROR logic) ──────────
+    const _xIsrMap={};
+    if(_xIsIsrael){
+      const isrOO=(typeof COUNTRY_OO_MAP!=='undefined'&&COUNTRY_OO_MAP['ISRAEL'])||{};
+      const qMths=(typeof QUARTER_CFG!=='undefined')?QUARTER_CFG.q1fy27.months:[];
+      const _pStart=new Date(new Date().getFullYear(),0,24);
+      const _wksPassed=Math.max(1,(new Date()-_pStart)/(7*24*60*60*1000));
+      rorFiltered.forEach(r=>{
+        const cfn=(r.CFN||'').toUpperCase(); if(_xIsrMap[cfn]) return;
+        const isrBO  =isrOO.bo?.cfnQty?.[cfn]||0;
+        const isrBOV =isrOO.bo?.cfnVal?.[cfn]||0;
+        const isrPD  =isrOO.pastdue?.cfnQty?.[cfn]||0;
+        const isrFD  =isrOO.future?.cfnQty?.[cfn]||0;
+        const isrOOB =isrOO.total?.cfnQty?.[cfn]||0;
+        const isrOOBV=isrOO.total?.cfnVal?.[cfn]||0;
+        const isrStock=INV_ISRAEL_MAP[cfn]??null;
+        const isrShip =STO_ISRAEL_SHIP2WK[cfn]??null;
+        const fcmIsr=(typeof COUNTRY_FCST_MAP!=='undefined')?COUNTRY_FCST_MAP['ISRAEL']:null;
+        const isrDem =fcmIsr?qMths.reduce((s,mm)=>s+(fcmIsr[mm]?.cfnDemand?.[cfn]||0),0):0;
+        const isrFcst=fcmIsr?qMths.reduce((s,mm)=>s+(fcmIsr[mm]?.cfnFcst?.[cfn]||0),0):0;
+        const isrWkly=Math.round(isrDem/_wksPassed*10)/10;
+        const isrWoC =isrWkly>0&&isrStock!=null?Math.round((isrStock/isrWkly)*10)/10:null;
+        const isrBoCur=isrBO+isrPD;
+        const isrAsp  =isrOOB>0?isrOOBV/isrOOB:0;
+        const isrBo2wk=Math.max(isrBoCur+2*isrWkly-(isrStock||0)-(isrShip||0),0);
+        const isrBoV2w=Math.round(isrBo2wk*isrAsp*100)/100;
+        const MAX_DEV=3.0;
+        let isrDev=null,isrImpact=null;
+        if(isrBoCur>0){ isrDev=Math.min(isrBo2wk/isrBoCur-1,MAX_DEV); isrImpact=Math.round((isrBoV2w-isrBOV)*100)/100; }
+        else if(isrBo2wk>0){ isrDev=MAX_DEV; isrImpact=Math.round(isrBoV2w*100)/100; }
+        _xIsrMap[cfn]={bo:isrBO,boVal:isrBOV,pd:isrPD,fd:isrFD,oob:isrOOB,
+          stock:isrStock,ship:isrShip,wkly:isrWkly,woc:isrWoC,
+          dev:isrDev,impact:isrImpact,q4Frac:isrFcst>0?isrDem/isrFcst:null};
+      });
+    }
+
+    // ── 2c. Country group aggregation (not used for Israel) ────────────────
+    const _xCtryGrp=(!_xIsIsrael)&&_rorCountryKey&&typeof COUNTRY_GROUPS!=='undefined'
       ?COUNTRY_GROUPS.find(g=>g.key===_rorCountryKey):null;
-    const _xCtryActive=!!_rorCountryKey;
+    const _xCtryActive=(!_xIsIsrael)&&!!_rorCountryKey;
     const _xCtryMembers=_xCtryGrp?_xCtryGrp.members:(_xCtryActive?[_rorCountryKey]:[]);
     const _xCtryLabel=_xCtryGrp?_xCtryGrp.label.replace(/^\S+\s*/,'')
       :(_xCtryActive?_rorCountryKey.charAt(0)+_rorCountryKey.slice(1).toLowerCase():'');
@@ -3304,22 +3425,25 @@ async function exportRORToExcel(){
     const CTRY_COLS=11; // country column count when active
 
     // ── 3. Column layout matching display ──────────────────────────────────
-    // MASTER DATA (4) | WE (12) | [COUNTRY (11)] | EMEA STOCK (4) | IN-TRANSIT (N)
+    // MASTER DATA (4) | WE (12) | [COUNTRY (11)] | EMEA STOCK (4 or 1) | IN-TRANSIT (N)
     const _fl=s=>s.replace(/\n/g,' ');
     const ctryLeafHdrs=_xCtryActive?[
       'BO QTY','BO Value ($)','Past Due','Future Due','OOB',
       'BO* QTY %','Exp. Stock (EA)','Exp. 2wk Ship.','Avg Wkly Demand','Exp. $ Impact','Q1 FCST Cons. %'
     ]:[];
+    const xDCHdrs=_xIsIsrael?['Tel Aviv (IL) DC 1338']:ROR_COLS.slice(15).map(c=>_fl(c.label));
+    const xWkLabels=activeWkKeys.map(k=>(_xIsIsrael?STO_ISRAEL_WEEK_LABELS[k]:WEEK_LABELS[k])||k);
     const leafHdrs=[
       ...ROR_COLS.slice(0,15).map(c=>_fl(c.label)), // 4 MASTER + 11 WE
       'Q1 FCST Cons. %',                              // 1 WE computed (Q1 FY27)
       ...ctryLeafHdrs,                                // 0 or 11 country cols
-      ...ROR_COLS.slice(15).map(c=>_fl(c.label)),    // 4 DC
-      ...activeWkKeys.map(k=>WEEK_LABELS[k]||k)      // N weeks
+      ...xDCHdrs,                                     // 1 (Israel) or 4 (WEU) DC cols
+      ...xWkLabels                                    // N weeks
     ];
     const numCols=leafHdrs.length;
     const ctryWidths=_xCtryActive?[9,14,9,9,9,10,11,11,11,14,12]:[];
-    const colWidths=[24,13,38,13, 9,14,11,11,9,11,15,13,10,12,18,14, ...ctryWidths, 11,11,11,11, ...activeWkKeys.map(()=>11)];
+    const xDCWidths=_xIsIsrael?[14]:[11,11,11,11];
+    const colWidths=[24,13,38,13, 9,14,11,11,9,11,15,13,10,12,18,14, ...ctryWidths, ...xDCWidths, ...activeWkKeys.map(()=>11)];
 
     // ── 4. Data rows (exclude blank/Grand Total CFN rows) ──────────────────
     const _validRows=rorFiltered.filter(r=>{ const c=(r.CFN||'').trim(); return c&&!/^grand\s*total$/i.test(c); });
@@ -3327,23 +3451,37 @@ async function exportRORToExcel(){
       const cfn=r.CFN||'';
       const cfnUp=cfn.toUpperCase();
       const q4e=_xq4[cfn];
-      const q4Frac=q4e&&q4e.fcst>0?q4e.dem/q4e.fcst:null;
+      const q4WeuFrac=q4e&&q4e.fcst>0?q4e.dem/q4e.fcst:null;
       const cd=_xCtryActive?(_xCtryMap[cfnUp]||{}):null;
       const ctryVals=_xCtryActive?[
         cd.bo??null, cd.boVal??null, cd.pd??null, cd.fd??null, cd.oob??null,
         cd.boPct??null, cd.expStock??null, cd.expShip??null, cd.wklyDem??null,
         cd.expImpact??null, cd.q4Frac??null,
       ]:[];
+      // For Israel: override blue section values + DC + weeks
+      const ir=_xIsIsrael?(_xIsrMap[cfnUp]||{}):null;
+      const q4FracFinal=_xIsIsrael?(ir.q4Frac??null):q4WeuFrac;
+      const dcVals=_xIsIsrael?[ir.stock??null]:[r.DC_Heerlen??null,r.DC_Rolo??null,r.DC_Alcala??null,r.DC_Kits??null];
+      const wkVals=_xIsIsrael
+        ?activeWkKeys.map(k=>(STO_ISRAEL_WEEK_MAP[cfnUp]||{})[k]??null)
+        :activeWkKeys.map(k=>r[k]??null);
       return[
         r.MPG||'', cfn, r.Description||'', r.Heerlen_Allocation||'',
-        r.BO_QTY??null, r.BO_Value??null,
-        r.PastDue_QTY??null, r.FutureDue_QTY??null, r.OOB_QTY??null,
-        r.Stock_EA??null, r.Shipments_2wk??null, r.Weekly_Demand??null,
-        r.WoC??null, r.BO_Dev_2wk??null, r.BO_Impact_2wk??null,
-        q4Frac??null,
+        _xIsIsrael?(ir.bo??null):(r.BO_QTY??null),
+        _xIsIsrael?(ir.boVal??null):(r.BO_Value??null),
+        _xIsIsrael?(ir.pd??null):(r.PastDue_QTY??null),
+        _xIsIsrael?(ir.fd??null):(r.FutureDue_QTY??null),
+        _xIsIsrael?(ir.oob??null):(r.OOB_QTY??null),
+        _xIsIsrael?(ir.stock??null):(r.Stock_EA??null),
+        _xIsIsrael?(ir.ship??null):(r.Shipments_2wk??null),
+        _xIsIsrael?(ir.wkly??null):(r.Weekly_Demand??null),
+        _xIsIsrael?(ir.woc??null):(r.WoC??null),
+        _xIsIsrael?(ir.dev??null):(r.BO_Dev_2wk??null),
+        _xIsIsrael?(ir.impact??null):(r.BO_Impact_2wk??null),
+        q4FracFinal??null,
         ...ctryVals,
-        r.DC_Heerlen??null, r.DC_Rolo??null, r.DC_Alcala??null, r.DC_Kits??null,
-        ...activeWkKeys.map(k=>r[k]??null)
+        ...dcVals,
+        ...wkVals
       ];
     });
 
@@ -3351,7 +3489,7 @@ async function exportRORToExcel(){
     // Fixed cols 0-15 (MASTER DATA + WE + Q4); country cols 11-wide; DC + week cols
     const _fixedFmt=[null,null,null,null,'#,##0','_($* #,##0.00_)','#,##0','#,##0','#,##0','#,##0','#,##0','#,##0.0','0.0','0.0%','_($* #,##0.00_)','0.0%'];
     const _ctryFmt=_xCtryActive?['#,##0','_($* #,##0.00_)','#,##0','#,##0','#,##0','0.0%','#,##0','#,##0','#,##0.0','_($* #,##0.00_)','0.0%']:[];
-    const _dcFmt=['#,##0','#,##0','#,##0','#,##0'];
+    const _dcFmt=_xIsIsrael?['#,##0']:['#,##0','#,##0','#,##0','#,##0'];
     const COL_FMT=[..._fixedFmt,..._ctryFmt,..._dcFmt];
     // Cols where positive=red, negative=green (1-based): BO_Dev_2wk=14, BO_Impact_2wk=15, country Exp.$Impact=26
     const _signedCols=new Set([14,15]);
@@ -3366,15 +3504,19 @@ async function exportRORToExcel(){
     // ── 6. Row 1: group headers (merged, color-coded) ───────────────────────
     ws.addRow([]);
     const grpRow=ws.getRow(1); grpRow.height=18;
+    const _dcColCount=_xIsIsrael?1:4;
     const _dcStart=17+(_xCtryActive?CTRY_COLS:0);
-    const _wkStart=_dcStart+4;
+    const _wkStart=_dcStart+_dcColCount;
+    const weGrpLabel=_xIsIsrael?'ISRAEL (BO* = BO + PAST DUE)':'WESTERN EUROPE (BO* = BO + PAST DUE)';
+    const emGrpLabel=_xIsIsrael?'ISRAEL — STOCK (EA) available':'EMEA — STOCK (EA) available';
+    const itGrpLabel=_xIsIsrael?'ISRAEL IN-TRANSIT SHIPMENTS (WEEKS)':'EMEA IN-TRANSIT SHIPMENTS (WEEKS)';
     const grpDefs=[
-      ['MASTER DATA',                           1,   4,  'FF002244'],
-      ['WESTERN EUROPE (BO* = BO + PAST DUE)', 5,  16, 'FF1A4080'],
+      ['MASTER DATA',  1,   4,  'FF002244'],
+      [weGrpLabel,     5,  16, 'FF1A4080'],
     ];
     if(_xCtryActive) grpDefs.push([_xCtryLabel.toUpperCase(), 17, 16+CTRY_COLS, 'FF5A2080']);
-    grpDefs.push(['EMEA — STOCK (EA) available', _dcStart, _dcStart+3, 'FF1A6A3A']);
-    if(N>0) grpDefs.push(['EMEA IN-TRANSIT SHIPMENTS (WEEKS)', _wkStart, _wkStart+N-1, 'FF7A4000']);
+    grpDefs.push([emGrpLabel, _dcStart, _dcStart+_dcColCount-1, 'FF1A6A3A']);
+    if(N>0) grpDefs.push([itGrpLabel, _wkStart, _wkStart+N-1, 'FF7A4000']);
     grpDefs.forEach(([lbl,sc,ec,argb])=>{
       if(sc<ec) ws.mergeCells(1,sc,1,ec);
       const cell=ws.getCell(1,sc);
@@ -3390,7 +3532,7 @@ async function exportRORToExcel(){
       if(ci<=4) return 'FF002244';
       if(ci<=16) return 'FF1A4080';
       if(_xCtryActive&&ci<=16+CTRY_COLS) return 'FF5A2080';
-      if(ci<=_dcStart+3) return 'FF1A6A3A';
+      if(ci<_wkStart) return 'FF1A6A3A';
       return 'FF5A3000';
     };
     hdrRow.eachCell((cell,ci)=>{
@@ -3471,7 +3613,7 @@ async function exportRORToExcel(){
 
     // ── 11. Download ────────────────────────────────────────────────────────
     const today=new Date().toISOString().slice(0,10);
-    const _fileLabel=_xCtryActive?_xCtryLabel.replace(/\s+/g,'_'):'WEU';
+    const _fileLabel=_xIsIsrael?'Israel':(_xCtryActive?_xCtryLabel.replace(/\s+/g,'_'):'WEU');
     const buffer=await wb.xlsx.writeBuffer();
     const blob=new Blob([buffer],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
     const url=URL.createObjectURL(blob);
@@ -4979,6 +5121,9 @@ async function loadFromFolder(){
       for(const entry of result.invExtras){
         try{
           const file = await entry.getFile();
+          // Parse SAP_INV_ISRAEL into INV_ISRAEL_MAP
+          const fnu = file.name.toUpperCase().replace(/[^A-Z0-9]/g,'_');
+          if(fnu.includes('SAP_INV')&&fnu.includes('ISRAEL')) await _processIsraelInvFile(file);
           if(!existingInvNames.has(file.name)){
             existingInv.push({ name: file.name, at: tsInv });
             existingInvNames.add(file.name);
@@ -5029,7 +5174,7 @@ async function loadFromFolder(){
       try{ localStorage.setItem('extra_fcst_files', JSON.stringify(existingFcst)); }catch(ex){}
     }
 
-    // Store extra STO Israel files — uploaded but not used for dashboard values
+    // Process STO Israel files → STO_ISRAEL_WEEK_MAP + STO_ISRAEL_SHIP2WK
     if(result.stoIsraelExtras && result.stoIsraelExtras.length > 0){
       const tsIL = new Date().toLocaleString();
       const existingIL = JSON.parse(localStorage.getItem('extra_sto_israel_files')||'[]');
@@ -5037,6 +5182,7 @@ async function loadFromFolder(){
       for(const entry of result.stoIsraelExtras){
         try{
           const file = await entry.getFile();
+          await _processSTOIsraelFile(file);
           if(!existingILNames.has(file.name)){
             existingIL.push({ name: file.name, at: tsIL });
             existingILNames.add(file.name);
@@ -5219,7 +5365,7 @@ async function refreshAllFiles(){
         if(rExtras && rExtras.length > 0){
           // (already saved above)
         }
-        // Re-save extra INV file metadata
+        // Re-process extra INV files (parse SAP_INV_ISRAEL into INV_ISRAEL_MAP)
         const { invExtras: rInvExtras, fcstExtras: rFcstExtras, stoIsraelExtras: rStoIsraelExtras } = refreshResult;
         if(rInvExtras && rInvExtras.length > 0){
           const tsI = new Date().toLocaleString();
@@ -5228,6 +5374,8 @@ async function refreshAllFiles(){
           for(const entry of rInvExtras){
             try{
               const file = await entry.getFile();
+              const fnu = file.name.toUpperCase().replace(/[^A-Z0-9]/g,'_');
+              if(fnu.includes('SAP_INV')&&fnu.includes('ISRAEL')) await _processIsraelInvFile(file);
               if(!existINames.has(file.name)) existI.push({ name: file.name, at: tsI });
               else { const rec=existI.find(e=>e.name===file.name); if(rec) rec.at=tsI; }
             }catch(e){}
@@ -5263,7 +5411,7 @@ async function refreshAllFiles(){
           }
           try{ localStorage.setItem('extra_fcst_files', JSON.stringify(existF)); }catch(ex){}
         }
-        // Re-save extra STO Israel file metadata
+        // Re-process STO Israel files → STO_ISRAEL_WEEK_MAP + STO_ISRAEL_SHIP2WK
         if(rStoIsraelExtras && rStoIsraelExtras.length > 0){
           const tsIL = new Date().toLocaleString();
           const existIL = JSON.parse(localStorage.getItem('extra_sto_israel_files')||'[]');
@@ -5271,6 +5419,7 @@ async function refreshAllFiles(){
           for(const entry of rStoIsraelExtras){
             try{
               const file = await entry.getFile();
+              await _processSTOIsraelFile(file);
               if(!existILNames.has(file.name)) existIL.push({ name: file.name, at: tsIL });
               else { const rec=existIL.find(e=>e.name===file.name); if(rec) rec.at=tsIL; }
             }catch(e){}
@@ -5819,6 +5968,22 @@ function checkInvBannerLoaded(){
       buildCountryCards('','');
       buildInTransitWoCChart('','');
     }
+    // Restore SAP_INV_ISRAEL and STO Israel data
+    const { invExtras: restoreInvExtras, stoIsraelExtras: restoreStoIsrael } = scanRes;
+    if(restoreInvExtras && restoreInvExtras.length>0){
+      for(const entry of restoreInvExtras){
+        try{
+          const file = await entry.getFile();
+          const fnu = file.name.toUpperCase().replace(/[^A-Z0-9]/g,'_');
+          if(fnu.includes('SAP_INV')&&fnu.includes('ISRAEL')) await _processIsraelInvFile(file);
+        }catch(e){}
+      }
+    }
+    if(restoreStoIsrael && restoreStoIsrael.length>0){
+      for(const entry of restoreStoIsrael){
+        try{ const file = await entry.getFile(); await _processSTOIsraelFile(file); }catch(e){}
+      }
+    }
     showRefreshAllBtn();
   }catch(e){ console.warn('Auto-restore from folder:',e); }
 })();
@@ -6079,6 +6244,107 @@ function _refreshHeerlenAlloc(){
     r.Heerlen_Allocation=INV_NL_PRDLOC.size>0?(INV_NL_PRDLOC.has(cfn)?'PRDLOC':'SYSTEM'):'';
   });
 }
+
+// Parse SAP_INV_ISRAEL.xlsx → INV_ISRAEL_MAP {CFN(uppercase): qtyTotal}
+function _processIsraelInvFile(file){
+  return new Promise((resolve)=>{
+    const reader=new FileReader();
+    reader.onload=function(e){
+      try{
+        const wb=XLSX.read(new Uint8Array(e.target.result),{type:'array'});
+        const ws=wb.Sheets[wb.SheetNames[0]];
+        const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:null});
+        if(!rows||rows.length<2){resolve();return;}
+        const hdr=rows[0].map(h=>String(h||'').toLowerCase());
+        const idxGrand=hdr.findIndex(h=>h.includes('isgrandtotal'));
+        const idxCFN  =hdr.findIndex(h=>h.includes('cfn'));
+        const idxQty  =hdr.findIndex(h=>h.includes('unrestricted'));
+        if(idxCFN<0||idxQty<0){resolve();return;}
+        // Clear and rebuild
+        Object.keys(INV_ISRAEL_MAP).forEach(k=>delete INV_ISRAEL_MAP[k]);
+        for(let i=1;i<rows.length;i++){
+          const row=rows[i]; if(!row||!row.length) continue;
+          const grand=row[idxGrand];
+          if(grand===true||String(grand).toLowerCase()==='true') continue;
+          const cfn=String(row[idxCFN]||'').trim().toUpperCase(); if(!cfn) continue;
+          const qty=parseFloat(row[idxQty])||0;
+          INV_ISRAEL_MAP[cfn]=(INV_ISRAEL_MAP[cfn]||0)+qty;
+        }
+        Object.keys(INV_ISRAEL_MAP).forEach(k=>{ INV_ISRAEL_MAP[k]=Math.round(INV_ISRAEL_MAP[k]); });
+        if(typeof renderROR==='function'&&_rorCountryKey==='ISRAEL') renderROR();
+        resolve();
+      }catch(err){console.warn('_processIsraelInvFile error',err);resolve();}
+    };
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+// Parse STO_ISRAEL.xlsx → STO_ISRAEL_WEEK_MAP + STO_ISRAEL_SHIP2WK
+function _processSTOIsraelFile(file){
+  return new Promise((resolve)=>{
+    const reader=new FileReader();
+    reader.onload=function(e){
+      try{
+        const wb=XLSX.read(new Uint8Array(e.target.result),{type:'array'});
+        const ws=wb.Sheets[wb.SheetNames[0]];
+        const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:null});
+        if(!rows||rows.length<2){resolve();return;}
+        const hdr=rows[0].map(h=>String(h||'').toLowerCase());
+        const idxGrand =hdr.findIndex(h=>h.includes('isgrandtotal'));
+        const idxQty   =hdr.findIndex(h=>h.includes('buom'));
+        const idxCFN   =hdr.findIndex(h=>h.includes('cfn')||h.includes('prod_cfn'));
+        const idxDate  =hdr.findIndex(h=>h.includes('delivery date')||h.includes('requested'));
+        const idxStatus=hdr.findIndex(h=>h.includes('delivery status')||h.includes('status'));
+        if(idxCFN<0||idxQty<0){resolve();return;}
+        // Clear
+        Object.keys(STO_ISRAEL_WEEK_MAP).forEach(k=>delete STO_ISRAEL_WEEK_MAP[k]);
+        Object.keys(STO_ISRAEL_SHIP2WK).forEach(k=>delete STO_ISRAEL_SHIP2WK[k]);
+        const wkMap={};
+        for(let i=1;i<rows.length;i++){
+          const row=rows[i]; if(!row||!row.length) continue;
+          const grand=row[idxGrand];
+          if(grand===true||String(grand).toLowerCase()==='true') continue;
+          const cfn=String(row[idxCFN]||'').trim().toUpperCase(); if(!cfn||cfn==='NULL') continue;
+          const qty=parseFloat(row[idxQty])||0; if(!qty) continue;
+          // Filter in-transit rows
+          if(idxStatus>=0){
+            const st=String(row[idxStatus]||'').trim().toLowerCase();
+            if(st&&!st.includes('in transit')&&!st.includes('intransit')) continue;
+          }
+          const dateRaw=row[idxDate]; if(!dateRaw) continue;
+          let dt; if(dateRaw instanceof Date) dt=dateRaw; else{ const s=String(dateRaw).trim(); if(!s||s==='null') continue; dt=new Date(s); }
+          if(isNaN(dt.getTime())) continue;
+          // ISO week key
+          const tmp=new Date(dt); tmp.setHours(0,0,0,0);
+          const dow=(tmp.getDay()||7); tmp.setDate(tmp.getDate()-dow+4);
+          const jan4=new Date(tmp.getFullYear(),0,4);
+          const wn=1+Math.round(((tmp-jan4)/864e5-3+(jan4.getDay()||7))/7);
+          const wkey='W'+tmp.getFullYear()+'_'+String(wn).padStart(2,'0');
+          if(!wkMap[cfn]) wkMap[cfn]={};
+          wkMap[cfn][wkey]=(wkMap[cfn][wkey]||0)+qty;
+        }
+        // Build week keys list and labels
+        const allWkKeys=new Set();
+        Object.values(wkMap).forEach(m=>Object.keys(m).forEach(k=>allWkKeys.add(k)));
+        STO_ISRAEL_WEEK_KEYS.length=0;
+        [...allWkKeys].sort().forEach(k=>STO_ISRAEL_WEEK_KEYS.push(k));
+        const _wkMonLabel=k=>{ const m=k.match(/W(\d+)_(\d+)/); if(!m) return k; const d=new Date(+m[1],0,4); d.setDate(d.getDate()-(d.getDay()||7)+1+(+m[2]-1)*7); return 'Wk '+(d.getMonth()+1).toString().padStart(2,'0')+'-'+d.getDate().toString().padStart(2,'0'); };
+        STO_ISRAEL_WEEK_KEYS.forEach(k=>{ STO_ISRAEL_WEEK_LABELS[k]=STO_ISRAEL_WEEK_LABELS[k]||_wkMonLabel(k); });
+        // Per-CFN week map and 2wk total (100% — no 0.8 discount)
+        Object.entries(wkMap).forEach(([cfn,wm])=>{
+          STO_ISRAEL_WEEK_MAP[cfn]={};
+          Object.entries(wm).forEach(([wk,q])=>{ STO_ISRAEL_WEEK_MAP[cfn][wk]=Math.round(q); });
+          const total=Object.values(wm).reduce((s,v)=>s+v,0);
+          STO_ISRAEL_SHIP2WK[cfn]=Math.round(total);
+        });
+        if(typeof renderROR==='function'&&_rorCountryKey==='ISRAEL') renderROR();
+        resolve();
+      }catch(err){console.warn('_processSTOIsraelFile error',err);resolve();}
+    };
+    reader.readAsArrayBuffer(file);
+  });
+}
+
 function processSTOFile(file){
   const reader=new FileReader();
   reader.onload=function(e){
