@@ -1297,6 +1297,14 @@ function _buildCountryGlobalView(grid, selUpper, q, mpgF, hasFilter, lag){
     cemaBoVal = parseFloat(localStorage.getItem('cema_bo_total_val')||'0');
   }
 
+  // Quarterly mode flag (shared with WEU toggle)
+  const _isQtrModeG = (typeof _weuTableMode!=='undefined') && _weuTableMode==='quarterly';
+  const GBL_QUARTERS = [
+    { label:'Q2 FY26', months:QUARTER_CFG.q2.months, cemaMths:QUARTER_CFG.q2.cemaMths },
+    { label:'Q3 FY26', months:QUARTER_CFG.q3.months, cemaMths:QUARTER_CFG.q3.cemaMths },
+    { label:'Q4 FY26', months:QUARTER_CFG.q4.months, cemaMths:QUARTER_CFG.q4.cemaMths },
+  ];
+
   // Quarter config for dynamic month selection
   const qCfgG = QUARTER_CFG[_countryTableQuarter||'q4'];
   const [gm0,gm1,gm2] = qCfgG.months;
@@ -1403,17 +1411,31 @@ function _buildCountryGlobalView(grid, selUpper, q, mpgF, hasFilter, lag){
       const q4Fcst = mFcst[gm0]+mFcst[gm1]+mFcst[gm2];
       const q4Dem  = mDem[gm0] +mDem[gm1] +mDem[gm2];
       const hasFcst = q4Fcst>0 || q4Dem>0;
-      return { cKey, flag:_cflag(cKey), boQty, boVal, hasFcst, hasMonthBucket:true, mFcst, mDem };
+      const qArr=GBL_QUARTERS.map(qg=>({
+        fcst:qg.months.reduce((s,m)=>s+sumFcst(lagData, rk+'_'+m),0),
+        dem: qg.months.reduce((s,m)=>s+sumFcst(DEMAND_DATA, rk+'_'+m),0)
+      }));
+      return { cKey, flag:_cflag(cKey), boQty, boVal, hasFcst, hasMonthBucket:true, mFcst, mDem, qArr };
     })
     .filter(r=>!hasFilter||r.boQty>0||r.boVal>0||r.mFcst[gm0]+r.mFcst[gm1]+r.mFcst[gm2]>0)
     .sort((a,b)=>b.boVal-a.boVal);
 
+  // Quarterly aggregates for WEU and CEMA
+  const weuQArr=GBL_QUARTERS.map(qg=>({
+    fcst:qg.months.reduce((s,m)=>s+sumFcst(lagData,m),0),
+    dem: qg.months.reduce((s,m)=>s+sumFcst(DEMAND_DATA,m),0)
+  }));
+  const cemaQArr=GBL_QUARTERS.map(qg=>({
+    fcst:qg.cemaMths.reduce((s,m)=>s+sumFcst(lagData,m),0),
+    dem: qg.cemaMths.reduce((s,m)=>s+sumFcst(DEMAND_DATA,m),0)
+  }));
+
   // Assemble ordered rows
   const rows = [];
   if(weuBoQty>0||weuBoVal>0||wFcst[gm0]+wFcst[gm1]+wFcst[gm2]>0)
-    rows.push({ cKey:'WEU', flag:'🌍', boQty:weuBoQty, boVal:weuBoVal, mFcst:wFcst, mDem:wDem, hasFcst:true, hasMonthBucket:true });
+    rows.push({ cKey:'WEU', flag:'🌍', boQty:weuBoQty, boVal:weuBoVal, mFcst:wFcst, mDem:wDem, hasFcst:true, hasMonthBucket:true, qArr:weuQArr });
   if(cemaBoQty>0||cemaBoVal>0||cFcst[gm0]+cFcst[gm1]+cFcst[gm2]>0)
-    rows.push({ cKey:'CEMA', flag:'🌿', boQty:cemaBoQty, boVal:cemaBoVal, mFcst:cFcst, mDem:cDem, hasFcst:true, hasMonthBucket:true });
+    rows.push({ cKey:'CEMA', flag:'🌿', boQty:cemaBoQty, boVal:cemaBoVal, mFcst:cFcst, mDem:cDem, hasFcst:true, hasMonthBucket:true, qArr:cemaQArr });
   otherRows.forEach(r=>rows.push(r));
 
   if(rows.length===0){ grid.innerHTML='<span class="country-cards-empty">Load BO files to see global data.</span>'; return; }
@@ -1423,24 +1445,26 @@ function _buildCountryGlobalView(grid, selUpper, q, mpgF, hasFilter, lag){
   const ths='padding:5px 6px;white-space:nowrap;font-size:10px;';
   const thsN=ths+'text-align:right;';
   const groupHdr='text-align:center;background:#004080;border-bottom:1px solid rgba(255,255,255,.25);';
+  const _gQtrGroupHdrs=_isQtrModeG
+    ?GBL_QUARTERS.map(qg=>`<th colspan="2" style="${ths+groupHdr}">${qg.label}</th>`).join('')
+    :`<th colspan="2" style="${ths+groupHdr}">${glbl0}</th><th colspan="2" style="${ths+groupHdr}">${glbl1}</th><th colspan="2" style="${ths+groupHdr}">${glbl2}</th>`;
+  const _gQtrSubHdrs=_isQtrModeG
+    ?GBL_QUARTERS.map(()=>`<th style="${thsN}">Fcst</th><th style="${thsN}">Dem</th>`).join('')
+    :`<th style="${thsN}">${lagLabel}</th><th style="${thsN}">Dem</th><th style="${thsN}">${lagLabel}</th><th style="${thsN}">Dem</th><th style="${thsN}">${lagLabel}</th><th style="${thsN}">Dem</th>`;
   let html=`<table style="font-size:11px;border-collapse:collapse;width:100%">
   <thead>
     <tr>
       <th rowspan="2" style="${ths}">Region</th>
       <th rowspan="2" style="${thsN}">BO Val ($)</th>
       <th rowspan="2" style="${thsN}">BO Qty</th>
-      <th colspan="2" style="${ths+groupHdr}">${glbl0}</th>
-      <th colspan="2" style="${ths+groupHdr}">${glbl1}</th>
-      <th colspan="2" style="${ths+groupHdr}">${glbl2}</th>
+      ${_gQtrGroupHdrs}
       <th colspan="2" style="${ths+groupHdr}">${qCfgG.label} Total</th>
       <th rowspan="2" style="${thsN}">BO %</th>
       <th rowspan="2" style="${thsN}">Cons. %</th>
       ${_gShowShip?`<th rowspan="2" style="${thsN}background:#854d0e;color:#fef08a;">Ship. %</th>`:''}
     </tr>
     <tr>
-      <th style="${thsN}">${lagLabel}</th><th style="${thsN}">Dem</th>
-      <th style="${thsN}">${lagLabel}</th><th style="${thsN}">Dem</th>
-      <th style="${thsN}">${lagLabel}</th><th style="${thsN}">Dem</th>
+      ${_gQtrSubHdrs}
       <th style="${thsN}">Fcst</th><th style="${thsN}">Dem</th>
     </tr>
   </thead><tbody>`;
@@ -1459,13 +1483,18 @@ function _buildCountryGlobalView(grid, selUpper, q, mpgF, hasFilter, lag){
     const bg=isSelectedG?'background:#dbeafe;outline:2px solid #0056a3;outline-offset:-2px;':i%2===0?'':'background:#f7fafe;';
     const boPctSty=boPct>20?'color:#c0392b;font-weight:700':boPct>10?'color:#e07000;font-weight:700':'';
     const consSty=consPct!==null?(consPct>=100?'color:#28a745;font-weight:700':consPct>=80?'color:#f0a500;font-weight:700':'color:#d9534f;font-weight:700'):'';
+    const midCols=_isQtrModeG
+      ?(r.qArr||GBL_QUARTERS.map(()=>({fcst:0,dem:0}))).map(({fcst,dem})=>
+          `<td style="${tdn}">${r.hasFcst?fmtQ(fcst):'—'}</td><td style="${tdn}">${r.hasFcst?fmtQ(dem):'—'}</td>`
+        ).join('')
+      :`<td style="${tdn}">${r.hasFcst&&r.hasMonthBucket?fmtQ(r.mFcst[gm0]):'—'}</td><td style="${tdn}">${r.hasFcst&&r.hasMonthBucket?fmtQ(r.mDem[gm0]):'—'}</td>`+
+       `<td style="${tdn}">${r.hasFcst&&r.hasMonthBucket?fmtQ(r.mFcst[gm1]):'—'}</td><td style="${tdn}">${r.hasFcst&&r.hasMonthBucket?fmtQ(r.mDem[gm1]):'—'}</td>`+
+       `<td style="${tdn}">${r.hasFcst&&r.hasMonthBucket?fmtQ(r.mFcst[gm2]):'—'}</td><td style="${tdn}">${r.hasFcst&&r.hasMonthBucket?fmtQ(r.mDem[gm2]):'—'}</td>`;
     html+=`<tr style="cursor:pointer;${bg}" onclick="selectCountryRow('${esc(r.cKey)}')">
       <td style="${td}font-weight:600">${r.flag} ${esc(r.cKey)}</td>
       <td style="${tdn}">${fmtV(r.boVal)}</td>
       <td style="${tdn}">${fmtQ(r.boQty)}</td>
-      <td style="${tdn}">${r.hasFcst&&r.hasMonthBucket?fmtQ(r.mFcst[gm0]):'—'}</td><td style="${tdn}">${r.hasFcst&&r.hasMonthBucket?fmtQ(r.mDem[gm0]):'—'}</td>
-      <td style="${tdn}">${r.hasFcst&&r.hasMonthBucket?fmtQ(r.mFcst[gm1]):'—'}</td><td style="${tdn}">${r.hasFcst&&r.hasMonthBucket?fmtQ(r.mDem[gm1]):'—'}</td>
-      <td style="${tdn}">${r.hasFcst&&r.hasMonthBucket?fmtQ(r.mFcst[gm2]):'—'}</td><td style="${tdn}">${r.hasFcst&&r.hasMonthBucket?fmtQ(r.mDem[gm2]):'—'}</td>
+      ${midCols}
       <td style="${tdn}font-weight:600;color:#0056a3">${r.hasFcst?fmtQ(q4Fcst):'—'}</td>
       <td style="${tdn}font-weight:600;color:#1a5c35">${r.hasFcst?fmtQ(q4Dem):'—'}</td>
       <td style="${tdn+boPctSty}">${fmtPct(boPct)}</td>
@@ -1485,12 +1514,17 @@ function _buildCountryGlobalView(grid, selUpper, q, mpgF, hasFilter, lag){
   const totShipStyG=totShipPctG!==null?(totShipPctG>=100?'color:#28a745':totShipPctG>=80?'color:#f0a500':'color:#d9534f'):'';
   const trs='padding:5px 6px;white-space:nowrap;border-top:2px solid #003366;font-weight:700;font-size:11px;background:#e8f0fc;';
   const trsN=trs+'text-align:right;font-variant-numeric:tabular-nums;';
+  const totQArr=GBL_QUARTERS.map((_,qi)=>({
+    fcst:rows.filter(r=>r.hasFcst).reduce((s,r)=>s+(r.qArr?.[qi]?.fcst||0),0),
+    dem: rows.filter(r=>r.hasFcst).reduce((s,r)=>s+(r.qArr?.[qi]?.dem||0),0)
+  }));
+  const totMidCols=_isQtrModeG
+    ?totQArr.map(({fcst,dem})=>`<td style="${trsN}color:#0056a3">${fmtQ(fcst)}</td><td style="${trsN}color:#1a5c35">${fmtQ(dem)}</td>`).join('')
+    :`<td style="${trsN}">—</td><td style="${trsN}">—</td><td style="${trsN}">—</td><td style="${trsN}">—</td><td style="${trsN}">—</td><td style="${trsN}">—</td>`;
   html+=`<tr>
     <td style="${trs}">🌐 Global Total</td>
     <td style="${trsN}">${fmtV(totBoVal)}</td><td style="${trsN}">${fmtQ(totBoQty)}</td>
-    <td style="${trsN}">—</td><td style="${trsN}">—</td>
-    <td style="${trsN}">—</td><td style="${trsN}">—</td>
-    <td style="${trsN}">—</td><td style="${trsN}">—</td>
+    ${totMidCols}
     <td style="${trsN}color:#0056a3">${fmtQ(totQ4Fcst)}</td>
     <td style="${trsN}color:#1a5c35">${fmtQ(totQ4Dem)}</td>
     <td style="${trsN}">100%</td>
@@ -2171,7 +2205,7 @@ function setCountryView(v){
   if(bg) bg.style.cssText = v==='global' ? activeSty : inactiveSty;
   if(bw) bw.style.cssText = v==='weu'    ? activeSty : inactiveSty;
   const mt = document.getElementById('cweumode-toggle');
-  if(mt) mt.style.display = v==='weu' ? 'flex' : 'none';
+  if(mt) mt.style.display = 'flex'; // visible for both WEU and GLOBAL
   const q   = (document.getElementById('global-cfn')||{value:''}).value.trim().toLowerCase();
   const mpgF= (document.getElementById('global-mpg')||{value:''}).value;
   buildCountryCards(q, mpgF, (typeof cfnSelectedSet!=='undefined'&&cfnSelectedSet.length>0)?cfnSelectedSet:[]);
