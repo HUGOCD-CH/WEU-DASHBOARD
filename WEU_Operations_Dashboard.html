@@ -3774,8 +3774,14 @@ function buildFCSTRows(){
   ['feb','mar','apr','cema_feb','cema_mar','cema_apr'].forEach(k=>{
     if(FCST_DATA[k]) Object.keys(FCST_DATA[k]).forEach(c=>cfnSet.add(c));
   });
-  const weuBoMap={};
-  ROR_DATA.forEach(r=>{if(r.CFN) weuBoMap[r.CFN]=(weuBoMap[r.CFN]||0)+(r.BO_QTY||0);});
+  const weuBoMap={}, weuBoValMap={}, oobValMap={}, oobQtyMap={};
+  ROR_DATA.forEach(r=>{
+    if(!r.CFN) return;
+    weuBoMap[r.CFN]   =(weuBoMap[r.CFN]   ||0)+(r.BO_QTY   ||0);
+    weuBoValMap[r.CFN]=(weuBoValMap[r.CFN] ||0)+(r.BO_Value ||0);
+    oobValMap[r.CFN]  =(oobValMap[r.CFN]   ||0)+(r.OOB_Value||0);
+    oobQtyMap[r.CFN]  =(oobQtyMap[r.CFN]   ||0)+(r.OOB_QTY  ||0);
+  });
   return [...cfnSet].sort().map(cfn=>{
     const mpg=CFN_MPG_MAP[cfn]||'';
     const wD  =(DEMAND_DATA.feb?.[cfn]||0)   +(DEMAND_DATA.mar?.[cfn]||0)   +(DEMAND_DATA.apr?.[cfn]||0);
@@ -3787,8 +3793,11 @@ function buildFCSTRows(){
     const cL1 =(FCST_LAG1_DATA.cema_feb?.[cfn]||0)+(FCST_LAG1_DATA.cema_mar?.[cfn]||0)+(FCST_LAG1_DATA.cema_apr?.[cfn]||0);
     const cL2 =(FCST_LAG2_DATA.cema_feb?.[cfn]||0)+(FCST_LAG2_DATA.cema_mar?.[cfn]||0)+(FCST_LAG2_DATA.cema_apr?.[cfn]||0);
     const wBq=weuBoMap[cfn]||0, cBq=CEMA_BO_QTY_MAP[cfn]||0;
+    const weuBoVal=weuBoValMap[cfn]||0;
+    const ooV=oobValMap[cfn]||0, ooQ=oobQtyMap[cfn]||0;
+    const asp=ooQ>0?ooV/ooQ:null;
     // % values are computed dynamically in _renderFCSTBody based on active lag
-    return {cfn,mpg,wBo:wBq,cBo:cBq,wD,wL0,wL1,wL2,cD,cL0,cL1,cL2};
+    return {cfn,mpg,wBo:wBq,weuBoVal,asp,cBo:cBq,wD,wL0,wL1,wL2,cD,cL0,cL1,cL2};
   });
 }
 
@@ -3888,9 +3897,11 @@ function _renderFCSTBody(){
   const thead=document.getElementById('fcst-thead');
   const _th=(key,lbl,bg,extra='',rs=1)=>{const ia=fcstSortCol===key;const b=ia?bg+'dd':bg;const ind=ia?(fcstSortDir>0?' ▲':' ▼'):'';const rspan=rs>1?` rowspan="${rs}"`:'';return `<th${rspan} style="background:${b};cursor:pointer;user-select:none;${extra}" onclick="sortFCST('${key}')" title="Sort by ${lbl}">${lbl}${ind}</th>`;};
   if(thead) thead.innerHTML=`<tr>
-    ${_th('cfn', 'CFN',         '#003366','padding:4px 6px;white-space:nowrap;vertical-align:middle;',2)}
-    ${_th('mpg', 'MPG',         '#003366','padding:4px 6px;white-space:nowrap;vertical-align:middle;',2)}
-    ${_th('wBo', 'WEU BO (QTY)','#1b3f6e','padding:4px 6px;white-space:nowrap;vertical-align:middle;',2)}
+    ${_th('cfn',      'CFN',         '#003366','padding:4px 6px;white-space:nowrap;vertical-align:middle;',2)}
+    ${_th('mpg',      'MPG',         '#003366','padding:4px 6px;white-space:nowrap;vertical-align:middle;',2)}
+    ${_th('wBo',      'WEU BO (QTY)','#1b3f6e','padding:4px 6px;white-space:nowrap;vertical-align:middle;',2)}
+    ${_th('weuBoVal', 'WEU BO ($)',  '#1b3f6e','padding:4px 6px;white-space:nowrap;vertical-align:middle;',2)}
+    ${_th('asp',      'ASP ($)',     '#1b3f6e','padding:4px 6px;white-space:nowrap;vertical-align:middle;',2)}
     <th colspan="4" style="background:#1b3f6e;text-align:center;padding:4px 6px;border-bottom:1px solid rgba(255,255,255,.25)">WEU</th>
     <th colspan="4" style="background:#1a5c35;text-align:center;padding:4px 6px;border-bottom:1px solid rgba(255,255,255,.25)">CEMA</th>
   </tr><tr>
@@ -3911,10 +3922,14 @@ function _renderFCSTBody(){
   const s=(fcstPage-1)*PAGE_SIZE;
   const tbody=document.getElementById('fcst-body');
   if(!tbody) return;
+  const fmtBoVal=v=>v?(v>=1e6?'$'+fmt(v/1e6,2)+'M':'$'+fmt(v,0)):'<span style="color:#ccc">—</span>';
+  const fmtAsp=v=>v===null?'<span style="color:#ccc">—</span>':'$'+fmt(v,2);
   tbody.innerHTML=rows.slice(s,s+PAGE_SIZE).map(r=>`<tr>
     <td><b>${esc(r.cfn)}</b></td>
     <td><span class="tag tag-blue" style="font-size:9px;white-space:nowrap">${esc(r.mpg||'—')}</span></td>
     <td class="num">${fmtN(r.wBo)}</td>
+    <td class="num">${fmtBoVal(r.weuBoVal)}</td>
+    <td class="num">${fmtAsp(r.asp)}</td>
     <td class="num">${fmtN(r[wFKey])}</td><td class="num">${fmtN(r.wD)}</td>
     <td class="num">${fmtP(r.wCons)}</td><td class="num">${fmtP(r.wShip)}</td>
     <td class="num">${fmtN(r[cFKey])}</td><td class="num">${fmtN(r.cD)}</td>
