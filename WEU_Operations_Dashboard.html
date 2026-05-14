@@ -3877,11 +3877,15 @@ function _renderFCSTBody(){
   // Augment rows with % values computed from the currently selected lag
   const augmented=fcstFiltered.map(r=>{
     const wF=r[wFKey]||0, cF=r[cFKey]||0;
+    const asp=r.asp||null;
     return Object.assign({},r,{
       wCons: wF>0?(r.wD/wF*100):null,
       cCons: cF>0?(r.cD/cF*100):null,
       wShip: wF>0?((r.wD-r.wBo)/wF*100):null,
       cShip: cF>0?((r.cD-r.cBo)/cF*100):null,
+      // Over/Under ($): (SHIP% × FCST − FCST) × ASP = (Demand − BO − FCST) × ASP
+      wOverUnder: (wF>0 && asp!==null) ? ((r.wD-r.wBo) - wF) * asp : null,
+      cOverUnder: (cF>0 && asp!==null) ? ((r.cD-r.cBo) - cF) * asp : null,
     });
   });
 
@@ -3902,17 +3906,19 @@ function _renderFCSTBody(){
     ${_th('wBo',      'WEU BO (QTY)','#1b3f6e','padding:4px 6px;white-space:nowrap;vertical-align:middle;',2)}
     ${_th('weuBoVal', 'WEU BO ($)',  '#1b3f6e','padding:4px 6px;white-space:nowrap;vertical-align:middle;',2)}
     ${_th('asp',      'ASP ($)',     '#1b3f6e','padding:4px 6px;white-space:nowrap;vertical-align:middle;',2)}
-    <th colspan="4" style="background:#1b3f6e;text-align:center;padding:4px 6px;border-bottom:1px solid rgba(255,255,255,.25)">WEU</th>
-    <th colspan="4" style="background:#1a5c35;text-align:center;padding:4px 6px;border-bottom:1px solid rgba(255,255,255,.25)">CEMA</th>
+    <th colspan="5" style="background:#1b3f6e;text-align:center;padding:4px 6px;border-bottom:1px solid rgba(255,255,255,.25)">WEU</th>
+    <th colspan="5" style="background:#1a5c35;text-align:center;padding:4px 6px;border-bottom:1px solid rgba(255,255,255,.25)">CEMA</th>
   </tr><tr>
-    ${_th(wFKey,  cols[3].label,'#1b3f6e','padding:3px 6px;')}
-    ${_th('wD',   'Demand',     '#1b3f6e','padding:3px 6px;')}
-    ${_th('wCons','CONS%',      '#4a2070','padding:3px 6px;')}
-    ${_th('wShip','SHIP%',      '#4a2070','padding:3px 6px;')}
-    ${_th(cFKey,  cols[7].label,'#1a5c35','padding:3px 6px;')}
-    ${_th('cD',   'Demand',     '#1a5c35','padding:3px 6px;')}
-    ${_th('cCons','CONS%',      '#4a2070','padding:3px 6px;')}
-    ${_th('cShip','SHIP%',      '#4a2070','padding:3px 6px;')}
+    ${_th(wFKey,        cols[3].label,              '#1b3f6e','padding:3px 6px;')}
+    ${_th('wD',         'Demand',                   '#1b3f6e','padding:3px 6px;')}
+    ${_th('wCons',      'CONS%',                    '#4a2070','padding:3px 6px;')}
+    ${_th('wShip',      'SHIP%',                    '#4a2070','padding:3px 6px;')}
+    ${_th('wOverUnder', 'Over/Under ($)',            '#2a5a8a','padding:3px 6px;white-space:nowrap;')}
+    ${_th(cFKey,        cols[7].label,              '#1a5c35','padding:3px 6px;')}
+    ${_th('cD',         'Demand',                   '#1a5c35','padding:3px 6px;')}
+    ${_th('cCons',      'CONS%',                    '#4a2070','padding:3px 6px;')}
+    ${_th('cShip',      'SHIP%',                    '#4a2070','padding:3px 6px;')}
+    ${_th('cOverUnder', 'Over/Under ($)',            '#2a6b3e','padding:3px 6px;white-space:nowrap;')}
   </tr>`;
 
   // Render tbody — column order: CFN, MPG, WEU_BO | WEU: Fcst, Demand, Cons%, Ship% | CEMA: Fcst, Demand, Cons%, Ship%
@@ -3924,6 +3930,14 @@ function _renderFCSTBody(){
   if(!tbody) return;
   const fmtBoVal=v=>v?(v>=1e6?'$'+fmt(v/1e6,2)+'M':'$'+fmt(v,0)):'<span style="color:#ccc">—</span>';
   const fmtAsp=v=>v===null?'<span style="color:#ccc">—</span>':'$'+fmt(v,2);
+  const fmtOU=v=>{
+    if(v===null||v===undefined) return '<span style="color:#ccc">—</span>';
+    const abs=Math.abs(v);
+    const str=abs>=1e6?'$'+fmt(abs/1e6,2)+'M':'$'+fmt(abs,0);
+    const color=v>0?'#28a745':v<0?'#d9534f':'#aaa';
+    const prefix=v>0?'+':v<0?'−':'';
+    return `<span style="color:${color};font-weight:600">${prefix}${str}</span>`;
+  };
   tbody.innerHTML=rows.slice(s,s+PAGE_SIZE).map(r=>`<tr>
     <td><b>${esc(r.cfn)}</b></td>
     <td><span class="tag tag-blue" style="font-size:9px;white-space:nowrap">${esc(r.mpg||'—')}</span></td>
@@ -3932,8 +3946,10 @@ function _renderFCSTBody(){
     <td class="num">${fmtAsp(r.asp)}</td>
     <td class="num">${fmtN(r[wFKey])}</td><td class="num">${fmtN(r.wD)}</td>
     <td class="num">${fmtP(r.wCons)}</td><td class="num">${fmtP(r.wShip)}</td>
+    <td class="num">${fmtOU(r.wOverUnder)}</td>
     <td class="num">${fmtN(r[cFKey])}</td><td class="num">${fmtN(r.cD)}</td>
     <td class="num">${fmtP(r.cCons)}</td><td class="num">${fmtP(r.cShip)}</td>
+    <td class="num">${fmtOU(r.cOverUnder)}</td>
   </tr>`).join('');
   renderPagination('fcst-pagination',fcstFiltered.length,fcstPage,p=>{fcstPage=p;_renderFCSTBody();});
 }
