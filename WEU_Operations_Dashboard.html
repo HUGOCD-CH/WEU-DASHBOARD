@@ -798,7 +798,13 @@ body.dark-mode .country-cards-empty{color:#5a7a9a;}
     <button class="bodev-mpg-clear" id="fcst-mpg-clear" style="display:none" onclick="onFCSTMPGChange('')">✕ Clear MPG</button>
     <span class="result-count" id="fcst-result-count"></span>
   </div>
-  <div id="fcst-summary" style="padding:0 4px;"></div>
+  <div style="display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap;padding:0 4px;">
+    <div id="fcst-summary" style="flex:1;min-width:280px;"></div>
+    <div id="fcst-bo-chart-wrap" style="flex-shrink:0;width:370px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:6px;padding:12px 16px 10px;">
+      <div style="font-size:11px;font-weight:700;color:#b0c4de;margin-bottom:8px;letter-spacing:.4px;">BO ($) — Fair Share vs Unbalanced</div>
+      <canvas id="fcst-bo-chart" style="max-height:130px;"></canvas>
+    </div>
+  </div>
   <div class="table-wrap">
     <table>
       <thead id="fcst-thead"></thead>
@@ -854,7 +860,7 @@ function trackingLink(carrier,nr){if(!nr)return `<span class="no-track">—</spa
 function showTab(t,el){document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));document.querySelectorAll('.page').forEach(x=>x.classList.remove('active'));el.classList.add('active');document.getElementById('page-'+t).classList.add('active');}
 
 // ===================== CHARTS (WoC) =====================
-let carrCI=null, weuFcstCI=null, cemaFcstCI=null, weuTotalCI=null, cemaTotalCI=null;
+let carrCI=null, weuFcstCI=null, cemaFcstCI=null, weuTotalCI=null, cemaTotalCI=null, fcstBOChartCI=null;
 
 // ── Dark / Light mode ─────────────────────────────────────────────────────
 function toggleDarkMode(){
@@ -3993,6 +3999,94 @@ function toggleFCSTMonth(m){
   _renderFCSTBody();
 }
 
+function buildFCSTBOChart(augmented){
+  const canvas=document.getElementById('fcst-bo-chart');
+  if(!canvas) return;
+
+  // Accumulate fair-share vs. actual BO ($) across all CFNs in current filter
+  let wFairShare=0, wTotal=0, cFairShare=0, cTotal=0;
+  augmented.forEach(r=>{
+    const asp=r.asp;
+    if(asp===null||asp===undefined||asp<=0) return;
+    const T=r.wBo+r.cBo;
+    const wF=fcstActiveLag==='L2'?r.wL2:fcstActiveLag==='L1'?r.wL1:r.wL0;
+    const cF=fcstActiveLag==='L2'?r.cL2:fcstActiveLag==='L1'?r.cL1:r.cL0;
+    wTotal+=r.wBo*asp;
+    cTotal+=r.cBo*asp;
+    if(T<=0) return;
+    let wBoFs;
+    if(wF+cF>0){
+      // Redistribute T so SHIP%_WEU == SHIP%_CEMA: wBoFs = [wF·(T−cD)+cF·wD]/(wF+cF)
+      wBoFs=(wF*(T-r.cD)+cF*r.wD)/(wF+cF);
+      wBoFs=Math.max(0,Math.min(T,wBoFs));
+    } else {
+      wBoFs=r.wBo; // no forecast — keep current split
+    }
+    wFairShare+=wBoFs*asp;
+    cFairShare+=(T-wBoFs)*asp;
+  });
+
+  // Clamp so both bars have non-negative segments that always sum to total
+  const wFS=Math.min(wTotal,wFairShare), wUB=Math.max(0,wTotal-wFairShare);
+  const cFS=Math.min(cTotal,cFairShare), cUB=Math.max(0,cTotal-cFairShare);
+
+  const isDark=document.body.classList.contains('dark-mode');
+  const tickClr=isDark?'#b0c4de':'#444';
+  const gridClr=isDark?'rgba(255,255,255,.06)':'rgba(0,0,0,.06)';
+  const fmtTick=v=>{
+    const abs=Math.abs(v);
+    if(abs>=1e6) return '$'+(abs/1e6).toFixed(1)+'M';
+    if(abs>=1e3) return '$'+(abs/1e3).toFixed(0)+'K';
+    return '$'+Math.round(abs);
+  };
+  const fmtTooltip=v=>{
+    const abs=Math.abs(v);
+    const s=abs>=1e6?'$'+(abs/1e6).toFixed(2)+'M':'$'+Math.round(abs).toLocaleString();
+    return (v<0?'−':'')+s;
+  };
+
+  if(fcstBOChartCI){fcstBOChartCI.destroy();fcstBOChartCI=null;}
+  fcstBOChartCI=new Chart(canvas,{
+    type:'bar',
+    data:{
+      labels:['🌍 WEU','🌿 CEMA'],
+      datasets:[
+        {
+          label:'Fair Share BO ($)',
+          data:[wFS,cFS],
+          backgroundColor:['rgba(91,155,213,.75)','rgba(84,186,134,.75)'],
+          borderColor:['rgba(91,155,213,1)','rgba(84,186,134,1)'],
+          borderWidth:1,borderRadius:3,
+        },
+        {
+          label:'Unbalanced BO ($)',
+          data:[wUB,cUB],
+          backgroundColor:['rgba(255,140,0,.72)','rgba(255,140,0,.72)'],
+          borderColor:['rgba(255,140,0,1)','rgba(255,140,0,1)'],
+          borderWidth:1,borderRadius:3,
+        }
+      ]
+    },
+    options:{
+      indexAxis:'y',
+      responsive:true,
+      maintainAspectRatio:false,
+      plugins:{
+        legend:{position:'bottom',labels:{color:tickClr,font:{size:10},boxWidth:12,padding:8}},
+        tooltip:{
+          callbacks:{
+            label:ctx=>' '+ctx.dataset.label+': '+fmtTooltip(ctx.raw)
+          }
+        }
+      },
+      scales:{
+        x:{stacked:true,ticks:{callback:fmtTick,color:tickClr,font:{size:9}},grid:{color:gridClr}},
+        y:{stacked:true,ticks:{color:tickClr,font:{size:11}},grid:{display:false}}
+      }
+    }
+  });
+}
+
 function renderFCSTSummary(augmented){
   const el=document.getElementById('fcst-summary');
   if(!el) return;
@@ -4036,6 +4130,7 @@ function renderFCSTSummary(augmented){
     ${card('weu','🌍','WEU','#7ab3ef')}
     ${card('cema','🌿','CEMA','#6fc98a')}
   </div>`;
+  buildFCSTBOChart(augmented);
 }
 
 // ===================== PAGINATION =====================
