@@ -801,7 +801,10 @@ body.dark-mode .country-cards-empty{color:#5a7a9a;}
   <div style="display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap;padding:0 4px;">
     <div id="fcst-summary" style="flex:1;min-width:280px;"></div>
     <div id="fcst-bo-chart-wrap" style="flex-shrink:0;width:370px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:6px;padding:12px 16px 10px;">
-      <div style="font-size:11px;font-weight:700;color:#b0c4de;margin-bottom:8px;letter-spacing:.4px;">BO ($) — Fair Share vs Unbalanced</div>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;">
+        <div style="font-size:11px;font-weight:700;color:#b0c4de;letter-spacing:.4px;">BO ($) — Fair Share vs Unbalanced</div>
+        <div id="fcst-bo-chart-sub" style="font-size:10px;opacity:.85;"></div>
+      </div>
       <canvas id="fcst-bo-chart" style="max-height:130px;"></canvas>
     </div>
   </div>
@@ -4045,6 +4048,15 @@ function buildFCSTBOChart(augmented){
     return (v<0?'−':'')+s;
   };
 
+  // Balance delta per region: positive = under-burdened (carries less BO than fair share)
+  const wDelta=wFairShare-wTotal, cDelta=cFairShare-cTotal;
+  const subEl=document.getElementById('fcst-bo-chart-sub');
+  if(subEl){
+    if(Math.abs(wDelta)<1){ subEl.innerHTML='<span style="color:#aaa">Balanced</span>'; }
+    else if(wDelta>0){ subEl.innerHTML=`<span style="color:#5b9bd5">WEU under-burdened ${fmtTooltip(wDelta)}</span>`; }
+    else              { subEl.innerHTML=`<span style="color:#ff8c00">WEU over-burdened ${fmtTooltip(-wDelta)}</span>`; }
+  }
+
   if(fcstBOChartCI){fcstBOChartCI.destroy();fcstBOChartCI=null;}
   fcstBOChartCI=new Chart(canvas,{
     type:'bar',
@@ -4075,7 +4087,22 @@ function buildFCSTBOChart(augmented){
         legend:{position:'bottom',labels:{color:tickClr,font:{size:10},boxWidth:12,padding:8}},
         tooltip:{
           callbacks:{
-            label:ctx=>' '+ctx.dataset.label+': '+fmtTooltip(ctx.raw)
+            title:ctx=>ctx[0].label,
+            label:ctx=>{
+              const isWeu=ctx.dataIndex===0;
+              const tot=isWeu?wTotal:cTotal;
+              const fs=isWeu?wFairShare:cFairShare;
+              const delta=fs-tot; // positive = under-burdened
+              if(ctx.datasetIndex===0){
+                const lines=[
+                  ' Fair Share BO: '+fmtTooltip(fs),
+                  ' Total BO:      '+fmtTooltip(tot),
+                ];
+                if(Math.abs(delta)>1) lines.push(' Delta: '+(delta>0?'−':'+')+''+fmtTooltip(Math.abs(delta))+(delta>0?' (under-burdened)':' (over-burdened)'));
+                return lines;
+              }
+              return ' Unbalanced (excess burden): '+fmtTooltip(Math.max(0,tot-fs));
+            }
           }
         }
       },
