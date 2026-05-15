@@ -4017,14 +4017,8 @@ function buildFCSTBOChart(augmented){
     wTotal+=r.wBo*asp;
     cTotal+=r.cBo*asp;
     if(T<=0) return;
-    let wBoFs;
-    if(wF+cF>0){
-      // Redistribute T so SHIP%_WEU == SHIP%_CEMA: wBoFs = [wF·(T−cD)+cF·wD]/(wF+cF)
-      wBoFs=(wF*(T-r.cD)+cF*r.wD)/(wF+cF);
-      wBoFs=Math.max(0,Math.min(T,wBoFs));
-    } else {
-      wBoFs=r.wBo; // no forecast — keep current split
-    }
+    // Distribute BO proportionally to selected-lag FCST so chart reacts to Lag 0/1/2
+    const wBoFs=(wF+cF>0)?T*wF/(wF+cF):r.wBo;
     wFairShare+=wBoFs*asp;
     cFairShare+=(T-wBoFs)*asp;
   });
